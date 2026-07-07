@@ -802,6 +802,12 @@ function detectMimeType(file){
   if(file.type && file.type !== 'application/octet-stream') return file.type;
   return 'application/octet-stream';
 }
+function detectRealKind(file){
+  const mime = detectMimeType(file);
+  if(mime.startsWith('video/')) return 'video';
+  if(mime.startsWith('audio/')) return 'audio';
+  return null; // unknown, fall back to what the user picked
+}
 
 async function handleFiles(fileList, kind){
   const files = Array.from(fileList);
@@ -816,7 +822,8 @@ async function handleFiles(fileList, kind){
       <div class="upload-status" id="${rowId}_status">Uploading...</div>`;
     wrap.appendChild(row);
 
-    const folder = kind === 'video' ? 'videos' : 'songs';
+    const realKind = detectRealKind(file) || kind;
+    const folder = realKind === 'video' ? 'videos' : 'songs';
     const objectKey = folder + '/' + Date.now() + '_' + sanitizeFilename(file.name);
 
     try {
@@ -828,7 +835,7 @@ async function handleFiles(fileList, kind){
       document.getElementById(rowId+'_status').style.color = 'var(--green-bright)';
 
       const titleGuess = file.name.replace(/\.[^/.]+$/, "");
-      const dbNode = kind === 'video' ? 'videos' : 'songs';
+      const dbNode = realKind === 'video' ? 'videos' : 'songs';
       await push(ref(db, dbNode), {
         title: titleGuess,
         artist: "Unknown",
