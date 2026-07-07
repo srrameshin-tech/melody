@@ -1,0 +1,40 @@
+name: Weekly Firebase Backup
+
+on:
+  schedule:
+    # Every Sunday at 2:00 AM IST (20:30 UTC Saturday)
+    - cron: '30 20 * * 6'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch Firebase Realtime Database export
+        run: |
+          mkdir -p backups
+          DATE=$(date -u +"%Y-%m-%d")
+          curl -sf "https://melody-app-e29f5-default-rtdb.asia-southeast1.firebasedatabase.app/.json" \
+            -o "backups/melody-backup-${DATE}.json"
+          echo "Saved backups/melody-backup-${DATE}.json"
+          ls -la backups/
+
+      - name: Prune old backups (keep last 12)
+        run: |
+          cd backups
+          ls -1t melody-backup-*.json | tail -n +13 | xargs -r rm -f
+          cd ..
+
+      - name: Commit and push backup
+        run: |
+          git config user.name "melody-backup-bot"
+          git config user.email "backup-bot@melody.sramesh.in"
+          git add backups/
+          git diff --cached --quiet || git commit -m "Weekly Firebase backup $(date -u +'%Y-%m-%d')"
+          git push
