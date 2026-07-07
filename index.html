@@ -453,7 +453,7 @@ function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2200);
+  setTimeout(()=>t.classList.remove('show'), 7000);
 }
 function fmtTime(s){
   if(!isFinite(s) || s<0) s=0;
@@ -896,18 +896,28 @@ async function loadAndPlay(){
   document.getElementById('miniTitle').textContent = item.title || item.key;
   document.getElementById('miniArtist').textContent = item.artist || 'Unknown';
 
+  let diagMsg = '';
+  try {
+    const diag = await fetch(url, { method: 'GET' });
+    diagMsg = `HTTP ${diag.status} | ${diag.headers.get('content-type')} | ${diag.headers.get('content-length')}b`;
+  } catch(diagErr){
+    diagMsg = 'Fetch failed: ' + diagErr.message;
+  }
+
+  let playMsg = '';
   if(item.type === 'video'){
     audioEl.pause(); audioEl.src = '';
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
     videoVisual.src = url;
-    try{ await videoVisual.play(); }catch(e){ toast('Play error: ' + e.message); }
+    try{ await videoVisual.play(); playMsg = 'Playing ✓'; }catch(e){ playMsg = 'Play error: ' + e.message; }
   } else {
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
     audioEl.src = url;
-    try{ await audioEl.play(); }catch(e){ toast('Play error: ' + e.message); }
+    try{ await audioEl.play(); playMsg = 'Playing ✓'; }catch(e){ playMsg = 'Play error: ' + e.message; }
   }
+  toast(diagMsg + ' — ' + playMsg);
   updatePlayIcons(true);
   showMiniPlayer();
 }
