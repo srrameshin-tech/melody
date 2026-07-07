@@ -340,8 +340,8 @@ input{font-family:inherit;}
     <div class="sheet-row" id="pickAudioBtn"><span class="sr-icon">🎵</span><span>Upload Songs (MP3)</span></div>
     <div class="sheet-row" id="pickVideoBtn"><span class="sr-icon">🎬</span><span>Upload Videos</span></div>
     <div class="sheet-row" id="createPlaylistBtn"><span class="sr-icon">📁</span><span>Create Playlist</span></div>
-    <input type="file" id="audioFileInput" class="hidden-file" accept="audio/*" multiple>
-    <input type="file" id="videoFileInput" class="hidden-file" accept="video/*" multiple>
+    <input type="file" id="audioFileInput" class="hidden-file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.amr" multiple>
+    <input type="file" id="videoFileInput" class="hidden-file" accept="video/*,.mp4,.mkv,.mov,.webm,.3gp,.avi" multiple>
     <div id="uploadProgressWrap" style="margin-top:14px;"></div>
   </div>
 </div>
@@ -824,6 +824,7 @@ async function handleFiles(fileList, kind){
       <div class="upload-bar"><div class="upload-bar-fill" id="${rowId}"></div></div>
       <div class="upload-status" id="${rowId}_status">Uploading...</div>`;
     wrap.appendChild(row);
+    const statusEl = document.getElementById(rowId+'_status');
 
     const realKind = detectRealKind(file) || kind;
     const folder = realKind === 'video' ? 'videos' : 'songs';
@@ -834,8 +835,21 @@ async function handleFiles(fileList, kind){
         const fill = document.getElementById(rowId);
         if(fill) fill.style.width = pct + '%';
       });
-      document.getElementById(rowId+'_status').textContent = 'Saved ✓';
-      document.getElementById(rowId+'_status').style.color = 'var(--green-bright)';
+
+      statusEl.textContent = 'Verifying...';
+      const verifyUrl = buildFileUrl(objectKey) + '?v=' + Date.now();
+      const verifyResp = await fetch(verifyUrl, { method: 'GET', cache: 'no-store' });
+      const storedLen = parseInt(verifyResp.headers.get('content-length') || '0', 10);
+
+      if(!verifyResp.ok){
+        throw new Error(`Verify failed: HTTP ${verifyResp.status}`);
+      }
+      if(storedLen !== file.size){
+        throw new Error(`Size mismatch: expected ${file.size}b, got ${storedLen}b`);
+      }
+
+      statusEl.textContent = 'Saved ✓';
+      statusEl.style.color = 'var(--green-bright)';
 
       const titleGuess = file.name.replace(/\.[^/.]+$/, "");
       const dbNode = realKind === 'video' ? 'videos' : 'songs';
@@ -847,8 +861,8 @@ async function handleFiles(fileList, kind){
         uploaded: Date.now()
       });
     } catch(err){
-      document.getElementById(rowId+'_status').textContent = 'Failed — try again';
-      document.getElementById(rowId+'_status').style.color = '#FF5C5C';
+      statusEl.textContent = 'Failed: ' + err.message;
+      statusEl.style.color = '#FF5C5C';
     }
   }
   toast('Upload complete');
@@ -863,8 +877,11 @@ function uploadWithProgress(key, file, onProgress){
     xhr.upload.onprogress = (e)=>{
       if(e.lengthComputable) onProgress(Math.round((e.loaded/e.total)*100));
     };
-    xhr.onload = ()=>{ if(xhr.status>=200 && xhr.status<300) resolve(); else reject(new Error('Upload failed')); };
-    xhr.onerror = ()=> reject(new Error('Network error'));
+    xhr.onload = ()=>{
+      if(xhr.status>=200 && xhr.status<300) resolve();
+      else reject(new Error(`Upload HTTP ${xhr.status}: ${(xhr.responseText||'').slice(0,80)}`));
+    };
+    xhr.onerror = ()=> reject(new Error('Network error during upload'));
     xhr.send(file);
   });
 }
