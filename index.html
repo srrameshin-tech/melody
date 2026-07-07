@@ -880,12 +880,12 @@ async function loadAndPlay(){
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
     videoVisual.src = url;
-    try{ await videoVisual.play(); }catch(e){}
+    try{ await videoVisual.play(); }catch(e){ toast('Play error: ' + e.message); }
   } else {
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
     audioEl.src = url;
-    try{ await audioEl.play(); }catch(e){}
+    try{ await audioEl.play(); }catch(e){ toast('Play error: ' + e.message); }
   }
   updatePlayIcons(true);
   showMiniPlayer();
@@ -945,6 +945,15 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
 });
 
 [audioEl, videoVisual].forEach(media=>{
+  media.addEventListener('error', ()=>{
+    const err = media.error;
+    let msg = 'Media error';
+    if(err){
+      const codes = {1:'Aborted',2:'Network error',3:'Cannot decode this file format',4:'File format not supported'};
+      msg = codes[err.code] || ('Error code ' + err.code);
+    }
+    toast('⚠️ ' + msg);
+  });
   media.addEventListener('timeupdate', ()=>{
     if(media !== activeMedia()) return;
     const pct = media.duration ? (media.currentTime/media.duration)*100 : 0;
