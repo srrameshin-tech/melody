@@ -260,7 +260,10 @@ input{font-family:inherit;}
 <div id="appScreen" class="screen">
   <div class="topbar">
     <h1>Melo<span>dy</span></h1>
-    <button class="icon-btn" id="lockBtn">🔒</button>
+    <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="selectModeBtn">☑️</button>
+      <button class="icon-btn" id="lockBtn">🔒</button>
+    </div>
   </div>
   <div class="search-wrap">
     <div class="search-box">
@@ -277,9 +280,17 @@ input{font-family:inherit;}
     <button class="tab" data-tab="videos">🎬 Videos</button>
     <button class="tab" data-tab="playlists">📁 Playlists</button>
     <button class="tab" data-tab="favorites">⭐ Favorites</button>
+    <button class="tab" data-tab="recent">🕒 Recent</button>
   </div>
   <div class="content" id="content"></div>
   <div class="fab" id="uploadFab">＋</div>
+  <div class="mini-player" id="bulkActionBar" style="display:none; justify-content:space-between;">
+    <span id="bulkCountLabel" style="font-weight:700;">0 selected</span>
+    <div style="display:flex; gap:14px;">
+      <button id="bulkDeleteBtn" style="color:var(--danger); font-weight:700;">Delete</button>
+      <button id="bulkCancelBtn" style="color:var(--grey); font-weight:700;">Cancel</button>
+    </div>
+  </div>
   <div class="mini-player" id="miniPlayer">
     <div class="mini-disc paused" id="miniDisc"></div>
     <div class="mini-info">
@@ -338,6 +349,11 @@ input{font-family:inherit;}
     <button id="timerBtn">⏱</button>
     <button id="addToPlaylistBtn">➕📁</button>
   </div>
+  <div style="display:flex; align-items:center; gap:10px; padding:0 30px 24px;">
+    <span style="color:var(--grey); font-size:16px;">🔉</span>
+    <input type="range" id="volumeSlider" min="0" max="100" value="100" style="flex:1; accent-color:var(--yellow);">
+    <span style="color:var(--grey); font-size:16px;">🔊</span>
+  </div>
 </div>
 
 <!-- audio element -->
@@ -365,6 +381,7 @@ input{font-family:inherit;}
     <div class="sheet-row" id="itemPlayRow"><span class="sr-icon">▶️</span><span>Play</span></div>
     <div class="sheet-row" id="itemFavRow"><span class="sr-icon">⭐</span><span id="itemFavLabel">Add to favorites</span></div>
     <div class="sheet-row" id="itemAddPlaylistRow"><span class="sr-icon">📁</span><span>Add to playlist</span></div>
+    <div class="sheet-row" id="itemDownloadRow"><span class="sr-icon">⬇️</span><span id="itemDownloadLabel">Download for offline</span></div>
     <div class="sheet-row" id="itemRenameRow"><span class="sr-icon">✏️</span><span>Rename</span></div>
     <div class="sheet-row" id="itemDeleteRow"><span class="sr-icon">🗑️</span><span style="color:#FF5C5C;">Delete</span></div>
   </div>
@@ -449,6 +466,9 @@ let songs = {};       // key -> {title, artist, key, size, type:'audio'}
 let videos = {};
 let playlists = {};   // key -> {name, items:[{type,key}]}
 let favorites = {};   // "type_key" -> true
+let recentPlays = {}; // "type_id" -> {id, type, playedAt}
+let selectMode = false;
+let selectedItems = new Set(); // "type_id"
 
 let currentTab = "songs";
 let currentQueue = [];   // array of {type,key,title,artist}
@@ -565,6 +585,7 @@ onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); }
 onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
+onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
 
 // ---------------- TABS / NAV ----------------
 function setTab(tab){
@@ -612,6 +633,11 @@ function renderContent(){
     el.appendChild(renderList(list, "⭐", "No favorites yet", "Tap the star on any song to add it here"));
   } else if(currentTab === 'playlists'){
     el.appendChild(renderPlaylists());
+  } else if(currentTab === 'recent'){
+    const all = [...allSongsArr(), ...allVideosArr()];
+    const entries = Object.values(recentPlays).sort((a,b)=>b.playedAt-a.playedAt).slice(0,40);
+    const list = entries.map(r => all.find(i => i.id===r.id && i.type===r.type)).filter(Boolean).filter(i=>matchesSearch(i,q));
+    el.appendChild(renderList(list, "🕒", "No plays yet", "Songs you play will show up here"));
   }
 }
 
@@ -630,7 +656,15 @@ function renderSongRow(item){
   const isPlaying = currentIndex >=0 && currentQueue[currentIndex] && currentQueue[currentIndex].key===item.key && currentQueue[currentIndex].type===item.type;
   row.className = 'song-row' + (isPlaying ? ' playing' : '');
   const isFav = !!favorites[keyFor(item)];
-  row.innerHTML = `
+  const selId = item.type + '_' + item.id;
+  const isSelected = selectedItems.has(selId);
+  row.innerHTML = selectMode ? `
+    <div class="checkbox ${isSelected?'checked':''}" data-action="select">${isSelected?'✓':''}</div>
+    <div class="song-info">
+      <div class="song-title">${escapeHtml(item.title || item.key)}</div>
+      <div class="song-meta"><span>${escapeHtml(item.artist||'Unknown')}</span></div>
+    </div>
+  ` : `
     <div class="song-thumb ${item.type==='video'?'video':''}">
       ${isPlaying ? '<div class="eq"><span></span><span></span><span></span></div>' : (item.type==='video' ? '🎬' : '🎵')}
     </div>
@@ -642,6 +676,13 @@ function renderSongRow(item){
     <button class="more-btn" data-action="more">⋯</button>
   `;
   row.addEventListener('click', (e)=>{
+    if(selectMode){
+      if(selectedItems.has(selId)) selectedItems.delete(selId);
+      else selectedItems.add(selId);
+      updateBulkBar();
+      renderContent();
+      return;
+    }
     const action = e.target.closest('[data-action]');
     if(action && action.dataset.action === 'fav'){
       toggleFavorite(item);
@@ -653,8 +694,67 @@ function renderSongRow(item){
     }
     playFromList(item);
   });
+  row.addEventListener('contextmenu', (e)=>{ e.preventDefault(); });
+  let pressTimer;
+  row.addEventListener('touchstart', ()=>{
+    pressTimer = setTimeout(()=>{
+      if(!selectMode){
+        selectMode = true;
+        selectedItems.add(selId);
+        updateBulkBar();
+        renderContent();
+      }
+    }, 500);
+  });
+  row.addEventListener('touchend', ()=> clearTimeout(pressTimer));
+  row.addEventListener('touchmove', ()=> clearTimeout(pressTimer));
   return row;
 }
+
+function updateBulkBar(){
+  const bar = document.getElementById('bulkActionBar');
+  const label = document.getElementById('bulkCountLabel');
+  if(selectMode && selectedItems.size > 0){
+    bar.style.display = 'flex';
+    label.textContent = selectedItems.size + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+document.getElementById('selectModeBtn').addEventListener('click', ()=>{
+  selectMode = !selectMode;
+  selectedItems.clear();
+  updateBulkBar();
+  renderContent();
+});
+document.getElementById('bulkCancelBtn').addEventListener('click', ()=>{
+  selectMode = false;
+  selectedItems.clear();
+  updateBulkBar();
+  renderContent();
+});
+document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
+  if(selectedItems.size === 0) return;
+  if(!confirm(`Delete ${selectedItems.size} item(s)? This cannot be undone.`)) return;
+  const all = [...allSongsArr(), ...allVideosArr()];
+  for(const selId of selectedItems){
+    const [type, id] = [selId.split('_')[0], selId.split('_').slice(1).join('_')];
+    const item = all.find(i => i.type===type && i.id===id);
+    if(!item) continue;
+    try{
+      await fetch(buildFileUrl(item.key), { method:'DELETE', headers:{'Authorization':'Bearer '+AUTH_SECRET} });
+    }catch(e){}
+    const node = item.type === 'video' ? 'videos' : 'songs';
+    await remove(ref(db, node + '/' + item.id));
+    await remove(ref(db, 'favorites/' + keyFor(item)));
+  }
+  selectMode = false;
+  selectedItems.clear();
+  updateBulkBar();
+  toast('Deleted');
+  refreshStorageUsage();
+});
 
 function toggleFavorite(item){
   const k = keyFor(item);
@@ -714,15 +814,49 @@ function openPlaylistView(pid, pl){
 
 // ---------------- ITEM SHEET (rename/delete/fav/playlist) ----------------
 let sheetItem = null;
+const OFFLINE_CACHE = 'melody-offline-media';
+async function isCached(url){
+  if(!('caches' in window)) return false;
+  try{
+    const cache = await caches.open(OFFLINE_CACHE);
+    const match = await cache.match(url);
+    return !!match;
+  }catch(e){ return false; }
+}
+
 function openItemSheet(item){
   sheetItem = item;
   document.getElementById('itemSheetTitle').textContent = item.title || item.key;
   document.getElementById('itemFavLabel').textContent = favorites[keyFor(item)] ? 'Remove from favorites' : 'Add to favorites';
+  isCached(buildFileUrl(item.key)).then(cached=>{
+    document.getElementById('itemDownloadLabel').textContent = cached ? 'Remove offline download' : 'Download for offline';
+  });
   openSheet('itemSheetOverlay');
 }
 document.getElementById('itemPlayRow').addEventListener('click', ()=>{ closeSheets(); if(sheetItem) playFromList(sheetItem); });
 document.getElementById('itemFavRow').addEventListener('click', ()=>{ if(sheetItem) toggleFavorite(sheetItem); closeSheets(); });
 document.getElementById('itemAddPlaylistRow').addEventListener('click', ()=>{ closeSheets(); openPlaylistPicker(sheetItem); });
+document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
+  if(!sheetItem) return;
+  closeSheets();
+  const url = buildFileUrl(sheetItem.key);
+  const cached = await isCached(url);
+  if(cached){
+    const cache = await caches.open(OFFLINE_CACHE);
+    await cache.delete(url);
+    toast('Removed offline download');
+  } else {
+    toast('Downloading for offline...');
+    try{
+      const cache = await caches.open(OFFLINE_CACHE);
+      const resp = await fetch(url, {cache:'no-store'});
+      await cache.put(url, resp);
+      toast('Downloaded ✓ available offline');
+    }catch(e){
+      toast('Download failed: ' + e.message);
+    }
+  }
+});
 document.getElementById('itemRenameRow').addEventListener('click', ()=>{
   closeSheets();
   document.getElementById('renameTitleInput').value = sheetItem.title || '';
@@ -928,6 +1062,11 @@ function buildQueueFromCurrentView(){
   if(currentTab === 'songs') return allSongsArr();
   if(currentTab === 'videos') return allVideosArr();
   if(currentTab === 'favorites') return [...allSongsArr(), ...allVideosArr()].filter(i=>favorites[keyFor(i)]);
+  if(currentTab === 'recent'){
+    const all = [...allSongsArr(), ...allVideosArr()];
+    const entries = Object.values(recentPlays).sort((a,b)=>b.playedAt-a.playedAt).slice(0,40);
+    return entries.map(r => all.find(i => i.id===r.id && i.type===r.type)).filter(Boolean);
+  }
   return [...allSongsArr(), ...allVideosArr()];
 }
 
@@ -954,11 +1093,23 @@ async function loadAndPlay(){
   document.getElementById('miniArtist').textContent = item.artist || 'Unknown';
 
   let diagMsg = '';
-  try {
-    const diag = await fetch(url, { method: 'GET' });
-    diagMsg = `HTTP ${diag.status} | ${diag.headers.get('content-type')} | ${diag.headers.get('content-length')}b`;
-  } catch(diagErr){
-    diagMsg = 'Fetch failed: ' + diagErr.message;
+  let playUrl = url;
+  const cachedOffline = await isCached(url);
+  if(cachedOffline){
+    try{
+      const cache = await caches.open(OFFLINE_CACHE);
+      const cachedResp = await cache.match(url);
+      const blob = await cachedResp.blob();
+      playUrl = URL.createObjectURL(blob);
+      diagMsg = 'Offline cache ✓';
+    }catch(e){ diagMsg = 'Cache read failed: ' + e.message; }
+  } else {
+    try {
+      const diag = await fetch(url, { method: 'GET' });
+      diagMsg = `HTTP ${diag.status} | ${diag.headers.get('content-type')} | ${diag.headers.get('content-length')}b`;
+    } catch(diagErr){
+      diagMsg = 'Fetch failed: ' + diagErr.message;
+    }
   }
 
   let playMsg = '';
@@ -966,7 +1117,7 @@ async function loadAndPlay(){
     audioEl.pause(); audioEl.src = '';
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
-    videoVisual.src = url;
+    videoVisual.src = playUrl;
     try{
       await videoVisual.play();
       playMsg = 'Playing ✓';
@@ -975,12 +1126,36 @@ async function loadAndPlay(){
   } else {
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
-    audioEl.src = url;
+    audioEl.src = playUrl;
     try{ await audioEl.play(); playMsg = 'Playing ✓'; }catch(e){ playMsg = 'Play error: ' + e.message; }
   }
   toast(diagMsg + ' — ' + playMsg);
   updatePlayIcons(true);
   showMiniPlayer();
+  updateMediaSession(item);
+  trackRecentPlay(item);
+}
+
+function updateMediaSession(item){
+  if(!('mediaSession' in navigator)) return;
+  try{
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: item.title || item.key,
+      artist: item.artist || 'Unknown',
+      album: 'Melody',
+    });
+    navigator.mediaSession.setActionHandler('play', ()=>{ activeMedia().play(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ activeMedia().pause(); });
+    navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+    navigator.mediaSession.setActionHandler('nexttrack', ()=>playNext(true));
+  }catch(e){}
+}
+
+function trackRecentPlay(item){
+  if(!item.id) return;
+  set(ref(db, 'recent/' + item.type + '_' + item.id), {
+    id: item.id, type: item.type, playedAt: Date.now()
+  }).catch(()=>{});
 }
 
 function activeMedia(){
@@ -1105,6 +1280,11 @@ document.getElementById('itemAddPlaylistRow')._noop = true;
 
 // sleep timer
 document.getElementById('timerBtn').addEventListener('click', ()=> openSheet('timerOverlay'));
+document.getElementById('volumeSlider').addEventListener('input', (e)=>{
+  const v = e.target.value / 100;
+  audioEl.volume = v;
+  videoVisual.volume = v;
+});
 document.getElementById('timerOverlay').addEventListener('click', (e)=>{
   const row = e.target.closest('[data-min]');
   if(!row) return;
