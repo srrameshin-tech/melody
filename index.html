@@ -261,6 +261,7 @@ input{font-family:inherit;}
   <div class="topbar">
     <h1>Melo<span>dy</span></h1>
     <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="manageUsersBtn">👥</button>
       <button class="icon-btn" id="selectModeBtn">☑️</button>
       <button class="icon-btn" id="lockBtn">🔒</button>
     </div>
@@ -439,9 +440,43 @@ input{font-family:inherit;}
   </div>
 </div>
 
+<div class="sheet-overlay" id="manageUsersOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h3>Manage Users</h3>
+    <div id="userListWrap"></div>
+    <button class="btn primary" id="addUserBtn" style="margin-top:14px;">＋ Add Person</button>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="addUserOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h3 id="userFormTitle">Add Person</h3>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="userNameInput" placeholder="e.g. Amma">
+    </div>
+    <div class="field">
+      <label>4-digit PIN</label>
+      <input type="text" id="userPinInput" placeholder="e.g. 2468" maxlength="4" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Role</label>
+      <select id="userRoleInput">
+        <option value="member">Member (play, favorite, playlists)</option>
+        <option value="admin">Admin (also upload, rename, delete)</option>
+      </select>
+    </div>
+    <button class="btn primary" id="saveUserBtn">Save</button>
+    <button class="btn danger" id="deleteUserBtn" style="margin-top:10px; display:none;">Remove this person</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -467,6 +502,8 @@ let videos = {};
 let playlists = {};   // key -> {name, items:[{type,key}]}
 let favorites = {};   // "type_key" -> true
 let recentPlays = {}; // "type_id" -> {id, type, playedAt}
+let usersData = {};   // pushId -> {name, pin, role}
+let currentUser = null; // {id, name, role}
 let selectMode = false;
 let selectedItems = new Set(); // "type_id"
 
@@ -542,8 +579,17 @@ document.getElementById('keypad').addEventListener('click', (e)=>{
   renderPinDots();
   if(pinBuffer.length === 4){
     setTimeout(()=>{
-      const savedPin = localStorage.getItem('melody_pin') || DEFAULT_PIN;
-      if(pinBuffer === savedPin){
+      const match = Object.entries(usersData).find(([id,u]) => u.pin === pinBuffer);
+      if(match){
+        currentUser = { id: match[0], name: match[1].name, role: match[1].role };
+        sessionStorage.setItem('melody_user', JSON.stringify(currentUser));
+        pinBuffer = "";
+        renderPinDots();
+        showApp();
+      } else if(Object.keys(usersData).length === 0 && pinBuffer === DEFAULT_PIN){
+        // Firebase user list hasn't loaded yet — fall back to default admin PIN
+        currentUser = { id: null, name: 'Admin', role: 'admin' };
+        sessionStorage.setItem('melody_user', JSON.stringify(currentUser));
         pinBuffer = "";
         renderPinDots();
         showApp();
@@ -560,18 +606,30 @@ function showApp(){
   sessionStorage.setItem('melody_unlocked','1');
   refreshStorageUsage();
   refreshOfflineCache();
+  applyRoleUI();
 }
 document.getElementById('lockBtn').addEventListener('click', ()=>{
   sessionStorage.removeItem('melody_unlocked');
+  sessionStorage.removeItem('melody_user');
+  currentUser = null;
   document.getElementById('appScreen').classList.remove('active');
   document.getElementById('loginScreen').classList.add('active');
 });
 
+function applyRoleUI(){
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  document.getElementById('uploadFab').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('selectModeBtn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('manageUsersBtn').style.display = isAdmin ? 'flex' : 'none';
+}
+
 if(sessionStorage.getItem('melody_unlocked') === '1'){
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appScreen').classList.add('active');
+  try{ currentUser = JSON.parse(sessionStorage.getItem('melody_user') || 'null'); }catch(e){ currentUser = null; }
   refreshStorageUsage();
   refreshOfflineCache();
+  applyRoleUI();
 }
 
 const FREE_TIER_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
@@ -602,6 +660,14 @@ onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent();
 onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
+onValue(ref(db, 'users'), snap => { usersData = snap.val() || {}; renderUserList(); });
+
+(async function seedAdminIfNeeded(){
+  const snap = await get(ref(db, 'users'));
+  if(!snap.exists()){
+    await push(ref(db, 'users'), { name: 'Admin', pin: DEFAULT_PIN, role: 'admin' });
+  }
+})();
 
 // ---------------- TABS / NAV ----------------
 function setTab(tab){
@@ -752,6 +818,7 @@ document.getElementById('bulkCancelBtn').addEventListener('click', ()=>{
   renderContent();
 });
 document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
+  if(!isAdminUser()){ toast('Only Admin can delete'); return; }
   if(selectedItems.size === 0) return;
   if(!confirm(`Delete ${selectedItems.size} item(s)? This cannot be undone.`)) return;
   const all = [...allSongsArr(), ...allVideosArr()];
@@ -848,8 +915,75 @@ function openItemSheet(item){
   isCached(buildFileUrl(item.key)).then(cached=>{
     document.getElementById('itemDownloadLabel').textContent = cached ? 'Remove offline download' : 'Download for offline';
   });
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  document.getElementById('itemRenameRow').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('itemDeleteRow').style.display = isAdmin ? 'flex' : 'none';
   openSheet('itemSheetOverlay');
 }
+// ---------------- MANAGE USERS ----------------
+function renderUserList(){
+  const wrap = document.getElementById('userListWrap');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  Object.entries(usersData).forEach(([id, u])=>{
+    const row = document.createElement('div');
+    row.className = 'sheet-row';
+    row.innerHTML = `<span class="sr-icon">${u.role==='admin' ? '👑' : '🙂'}</span>
+      <span style="flex:1;">${escapeHtml(u.name)} <span style="color:var(--grey); font-size:12px;">(${u.role})</span></span>`;
+    row.addEventListener('click', ()=> openUserForm(id, u));
+    wrap.appendChild(row);
+  });
+  if(Object.keys(usersData).length === 0){
+    wrap.innerHTML = '<p style="color:var(--grey); font-size:13px;">No users yet.</p>';
+  }
+}
+document.getElementById('manageUsersBtn').addEventListener('click', ()=>{
+  if(!isAdminUser()){ toast('Only Admin can manage users'); return; }
+  renderUserList();
+  openSheet('manageUsersOverlay');
+});
+
+let editingUserId = null;
+function openUserForm(id, u){
+  editingUserId = id || null;
+  document.getElementById('userFormTitle').textContent = id ? 'Edit Person' : 'Add Person';
+  document.getElementById('userNameInput').value = u ? u.name : '';
+  document.getElementById('userPinInput').value = u ? u.pin : '';
+  document.getElementById('userRoleInput').value = u ? u.role : 'member';
+  document.getElementById('deleteUserBtn').style.display = id ? 'block' : 'none';
+  closeSheets();
+  openSheet('addUserOverlay');
+}
+document.getElementById('addUserBtn').addEventListener('click', ()=> openUserForm(null, null));
+document.getElementById('saveUserBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('userNameInput').value.trim();
+  const pin = document.getElementById('userPinInput').value.trim();
+  const role = document.getElementById('userRoleInput').value;
+  if(!name){ toast('Enter a name'); return; }
+  if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits'); return; }
+  const dupe = Object.entries(usersData).find(([id,u]) => u.pin === pin && id !== editingUserId);
+  if(dupe){ toast('That PIN is already used by ' + dupe[1].name); return; }
+  if(editingUserId){
+    await update(ref(db, 'users/' + editingUserId), { name, pin, role });
+  } else {
+    await push(ref(db, 'users'), { name, pin, role });
+  }
+  closeSheets();
+  toast('Saved');
+});
+document.getElementById('deleteUserBtn').addEventListener('click', async ()=>{
+  if(!editingUserId) return;
+  const admins = Object.values(usersData).filter(u => u.role === 'admin');
+  if(usersData[editingUserId] && usersData[editingUserId].role === 'admin' && admins.length <= 1){
+    toast("Can't remove the last Admin");
+    return;
+  }
+  if(!confirm('Remove this person?')) return;
+  await remove(ref(db, 'users/' + editingUserId));
+  closeSheets();
+  toast('Removed');
+});
+
 document.getElementById('itemPlayRow').addEventListener('click', ()=>{ closeSheets(); if(sheetItem) playFromList(sheetItem); });
 document.getElementById('itemFavRow').addEventListener('click', ()=>{ if(sheetItem) toggleFavorite(sheetItem); closeSheets(); });
 document.getElementById('itemAddPlaylistRow').addEventListener('click', ()=>{ closeSheets(); openPlaylistPicker(sheetItem); });
@@ -875,13 +1009,17 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
   }
   refreshOfflineCache();
 });
+function isAdminUser(){ return !!(currentUser && currentUser.role === 'admin'); }
+
 document.getElementById('itemRenameRow').addEventListener('click', ()=>{
+  if(!isAdminUser()){ toast('Only Admin can rename'); return; }
   closeSheets();
   document.getElementById('renameTitleInput').value = sheetItem.title || '';
   document.getElementById('renameArtistInput').value = sheetItem.artist || '';
   openSheet('renameOverlay');
 });
 document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
+  if(!isAdminUser()){ toast('Only Admin can delete'); return; }
   closeSheets();
   if(!sheetItem) return;
   if(!confirm('Delete "' + (sheetItem.title||sheetItem.key) + '"? This cannot be undone.')) return;
@@ -973,7 +1111,10 @@ document.querySelectorAll('.sheet-overlay').forEach(overlay=>{
 });
 
 // ---------------- UPLOAD ----------------
-document.getElementById('uploadFab').addEventListener('click', ()=> openSheet('uploadSheetOverlay'));
+document.getElementById('uploadFab').addEventListener('click', ()=>{
+  if(!isAdminUser()){ toast('Only Admin can upload'); return; }
+  openSheet('uploadSheetOverlay');
+});
 document.getElementById('pickAudioBtn').addEventListener('click', ()=> document.getElementById('audioFileInput').click());
 document.getElementById('pickVideoBtn').addEventListener('click', ()=> document.getElementById('videoFileInput').click());
 
