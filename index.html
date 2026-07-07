@@ -789,6 +789,20 @@ function sanitizeFilename(name){
   return name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+const MIME_MAP = {
+  mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg',
+  opus:'audio/ogg', flac:'audio/flac', wma:'audio/x-ms-wma', amr:'audio/amr', '3gp':'audio/3gpp',
+  mp4:'video/mp4', webm:'video/webm', mov:'video/quicktime', mkv:'video/x-matroska',
+  avi:'video/x-msvideo', m4v:'video/mp4', '3gpp':'video/3gpp'
+};
+function detectMimeType(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mapped = MIME_MAP[ext];
+  if(mapped) return mapped;
+  if(file.type && file.type !== 'application/octet-stream') return file.type;
+  return 'application/octet-stream';
+}
+
 async function handleFiles(fileList, kind){
   const files = Array.from(fileList);
   if(files.length===0) return;
@@ -835,7 +849,7 @@ function uploadWithProgress(key, file, onProgress){
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', buildFileUrl(key));
     xhr.setRequestHeader('Authorization', 'Bearer ' + AUTH_SECRET);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('Content-Type', detectMimeType(file));
     xhr.upload.onprogress = (e)=>{
       if(e.lengthComputable) onProgress(Math.round((e.loaded/e.total)*100));
     };
