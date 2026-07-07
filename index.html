@@ -464,6 +464,9 @@ function escapeHtml(str){
   return (str||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function keyFor(item){ return item.type + "_" + item.key; }
+function buildFileUrl(key){
+  return WORKER_URL + '/' + key.split('/').map(encodeURIComponent).join('/');
+}
 
 // ---------------- LOGIN ----------------
 let pinBuffer = "";
@@ -693,7 +696,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   if(!sheetItem) return;
   if(!confirm('Delete "' + (sheetItem.title||sheetItem.key) + '"? This cannot be undone.')) return;
   try{
-    await fetch(WORKER_URL + '/' + encodeURIComponent(sheetItem.key), {
+    await fetch(buildFileUrl(sheetItem.key), {
       method:'DELETE', headers:{'Authorization':'Bearer ' + AUTH_SECRET}
     });
   }catch(e){}
@@ -830,7 +833,7 @@ async function handleFiles(fileList, kind){
 function uploadWithProgress(key, file, onProgress){
   return new Promise((resolve, reject)=>{
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', WORKER_URL + '/' + encodeURIComponent(key));
+    xhr.open('PUT', buildFileUrl(key));
     xhr.setRequestHeader('Authorization', 'Bearer ' + AUTH_SECRET);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
     xhr.upload.onprogress = (e)=>{
@@ -865,7 +868,7 @@ function currentItem(){ return currentQueue[currentIndex]; }
 async function loadAndPlay(){
   const item = currentItem();
   if(!item) return;
-  const url = WORKER_URL + '/' + encodeURIComponent(item.key);
+  const url = buildFileUrl(item.key);
   document.getElementById('playerTitle').textContent = item.title || item.key;
   document.getElementById('playerArtist').textContent = item.artist || 'Unknown';
   document.getElementById('playerDiscLetter').textContent = (item.title||'M').charAt(0).toUpperCase();
