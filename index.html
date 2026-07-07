@@ -583,6 +583,9 @@ let recentPlays = {}; // "type_id" -> {id, type, playedAt}
 let usersData = {};   // pushId -> {name, pin, role}
 let currentUser = null; // {id, name, role}
 let selectMode = false;
+let masterVolume = 1;
+let fadeOutStarted = false;
+const CROSSFADE_SECONDS = 3;
 let filterSinger = null;
 let filterMood = null;
 let filterYear = null;
@@ -1468,10 +1471,12 @@ async function loadAndPlay(){
   }
 
   let playMsg = '';
+  fadeOutStarted = false;
   if(item.type === 'video'){
     audioEl.pause(); audioEl.src = '';
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
+    videoVisual.volume = masterVolume;
     videoVisual.src = playUrl;
     try{
       await videoVisual.play();
@@ -1482,7 +1487,12 @@ async function loadAndPlay(){
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
     audioEl.src = playUrl;
-    try{ await audioEl.play(); playMsg = 'Playing ✓'; }catch(e){ playMsg = 'Play error: ' + e.message; }
+    audioEl.volume = 0;
+    try{
+      await audioEl.play();
+      playMsg = 'Playing ✓';
+      fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
+    }catch(e){ playMsg = 'Play error: ' + e.message; }
   }
   toast(diagMsg + ' — ' + playMsg);
   updatePlayIcons(true);
@@ -1516,6 +1526,22 @@ function trackRecentPlay(item){
 function activeMedia(){
   const item = currentItem();
   return (item && item.type === 'video') ? videoVisual : audioEl;
+}
+
+function fadeAudioVolume(media, from, to, seconds){
+  const steps = 20;
+  const stepMs = (seconds*1000)/steps;
+  let i = 0;
+  media.volume = Math.max(0, Math.min(1, from));
+  const timer = setInterval(()=>{
+    i++;
+    const v = from + (to-from) * (i/steps);
+    media.volume = Math.max(0, Math.min(1, v));
+    if(i >= steps){
+      clearInterval(timer);
+      media.volume = Math.max(0, Math.min(1, to));
+    }
+  }, stepMs);
 }
 
 function requestVideoFullscreen(){
@@ -1591,6 +1617,13 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
     document.getElementById('miniProgressFill').style.width = pct + '%';
     document.getElementById('curTime').textContent = fmtTime(media.currentTime);
     document.getElementById('durTime').textContent = fmtTime(media.duration);
+    if(media === audioEl && isFinite(media.duration) && repeatMode !== 2){
+      const remaining = media.duration - media.currentTime;
+      if(!fadeOutStarted && remaining > 0 && remaining <= CROSSFADE_SECONDS){
+        fadeOutStarted = true;
+        fadeAudioVolume(media, media.volume, 0, CROSSFADE_SECONDS);
+      }
+    }
   });
   media.addEventListener('ended', ()=>{
     if(media !== activeMedia()) return;
@@ -1640,9 +1673,9 @@ document.getElementById('itemAddPlaylistRow')._noop = true;
 // sleep timer
 document.getElementById('timerBtn').addEventListener('click', ()=> openSheet('timerOverlay'));
 document.getElementById('volumeSlider').addEventListener('input', (e)=>{
-  const v = e.target.value / 100;
-  audioEl.volume = v;
-  videoVisual.volume = v;
+  masterVolume = e.target.value / 100;
+  audioEl.volume = masterVolume;
+  videoVisual.volume = masterVolume;
 });
 document.getElementById('timerOverlay').addEventListener('click', (e)=>{
   const row = e.target.closest('[data-min]');
