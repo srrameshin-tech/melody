@@ -141,10 +141,10 @@ input{font-family:inherit;}
 /* Bottom nav */
 .bottom-nav{position:fixed; bottom:0; left:0; right:0; background:rgba(13,13,13,0.95); backdrop-filter:blur(10px);
   border-top:1px solid #222; display:flex; z-index:30; padding-bottom:env(safe-area-inset-bottom);}
-.nav-item{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:12px 0 10px;
-  color:var(--grey); font-size:11px; font-weight:600;}
+.nav-item{flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 0 8px; min-width:0;
+  color:var(--grey); font-size:10px; font-weight:600;}
 .nav-item.active{color:var(--yellow);}
-.nav-item .nic{font-size:20px;}
+.nav-item .nic{font-size:18px;}
 
 /* Mini player */
 .mini-player{position:fixed; left:12px; right:12px; bottom:74px; background:var(--black3); border-radius:16px;
@@ -309,6 +309,7 @@ input{font-family:inherit;}
     <button class="nav-item" data-nav="videos"><span class="nic">🎬</span>Videos</button>
     <button class="nav-item" data-nav="playlists"><span class="nic">📁</span>Playlists</button>
     <button class="nav-item" data-nav="favorites"><span class="nic">⭐</span>Favorites</button>
+    <button class="nav-item" data-nav="recent"><span class="nic">🕒</span>Recent</button>
   </div>
 </div>
 
