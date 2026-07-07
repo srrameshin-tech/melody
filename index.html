@@ -502,6 +502,20 @@ function buildFileUrl(key){
   return WORKER_URL + '/' + key.split('/').map(encodeURIComponent).join('/');
 }
 
+// ---------------- OFFLINE DOWNLOAD (Cache Storage API) ----------------
+const offlineKeysCache = new Set();
+async function refreshOfflineCache(){
+  offlineKeysCache.clear();
+  if('caches' in window){
+    try{
+      const cache = await caches.open(OFFLINE_CACHE);
+      const requests = await cache.keys();
+      requests.forEach(req => offlineKeysCache.add(req.url));
+    }catch(e){}
+  }
+  renderContent();
+}
+
 // ---------------- LOGIN ----------------
 let pinBuffer = "";
 const pinDotsEl = document.getElementById('pinDots');
@@ -545,6 +559,7 @@ function showApp(){
   document.getElementById('appScreen').classList.add('active');
   sessionStorage.setItem('melody_unlocked','1');
   refreshStorageUsage();
+  refreshOfflineCache();
 }
 document.getElementById('lockBtn').addEventListener('click', ()=>{
   sessionStorage.removeItem('melody_unlocked');
@@ -556,6 +571,7 @@ if(sessionStorage.getItem('melody_unlocked') === '1'){
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appScreen').classList.add('active');
   refreshStorageUsage();
+  refreshOfflineCache();
 }
 
 const FREE_TIER_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
@@ -656,6 +672,7 @@ function renderSongRow(item){
   const isPlaying = currentIndex >=0 && currentQueue[currentIndex] && currentQueue[currentIndex].key===item.key && currentQueue[currentIndex].type===item.type;
   row.className = 'song-row' + (isPlaying ? ' playing' : '');
   const isFav = !!favorites[keyFor(item)];
+  const isOffline = offlineKeysCache.has(buildFileUrl(item.key));
   const selId = item.type + '_' + item.id;
   const isSelected = selectedItems.has(selId);
   row.innerHTML = selectMode ? `
@@ -670,7 +687,7 @@ function renderSongRow(item){
     </div>
     <div class="song-info">
       <div class="song-title">${escapeHtml(item.title || item.key)}</div>
-      <div class="song-meta"><span>${escapeHtml(item.artist||'Unknown')}</span></div>
+      <div class="song-meta"><span>${escapeHtml(item.artist||'Unknown')}</span>${isOffline ? ' <span style="color:var(--green-bright);">⬇ Offline</span>' : ''}</div>
     </div>
     <button class="fav-btn ${isFav?'active':''}" data-action="fav">⭐</button>
     <button class="more-btn" data-action="more">⋯</button>
@@ -856,6 +873,7 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
       toast('Download failed: ' + e.message);
     }
   }
+  refreshOfflineCache();
 });
 document.getElementById('itemRenameRow').addEventListener('click', ()=>{
   closeSheets();
@@ -875,8 +893,12 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
   await remove(ref(db, node + '/' + sheetItem.id));
   await remove(ref(db, 'favorites/' + keyFor(sheetItem)));
+  if('caches' in window){
+    try{ const cache = await caches.open(OFFLINE_CACHE); await cache.delete(buildFileUrl(sheetItem.key)); }catch(e){}
+  }
   toast('Deleted');
   refreshStorageUsage();
+  refreshOfflineCache();
 });
 document.getElementById('saveRenameBtn').addEventListener('click', async ()=>{
   if(!sheetItem) return;
