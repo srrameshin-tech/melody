@@ -17,14 +17,35 @@
   --yellow:#FFD400;
   --yellow-dim:#FFC400;
   --green:#2E7D32;
-  --green-bright:#66E37A;
+  --green-bright:#1E9E43;
   --black:#0D0D0D;
   --black2:#161616;
   --black3:#1F1F1F;
   --white:#FFFFFF;
   --grey:#8A8A8A;
   --danger:#FF5C5C;
+  --ink:#0D0D0D;
   --radius:18px;
+  --login-glow:#1a1a1a;
+  --player-glow:#131608;
+  --key-border:#2b2b2b;
+  --border-soft:#262626;
+  --border-soft2:#232323;
+  --shadow-soft:rgba(0,0,0,0.5);
+}
+:root[data-theme="light"]{
+  --green-bright:#1E9E43;
+  --black:#F6F6F1;
+  --black2:#FFFFFF;
+  --black3:#ECECE5;
+  --white:#17170F;
+  --grey:#6E6E66;
+  --login-glow:#EDEDE4;
+  --player-glow:#FFF6C9;
+  --key-border:#DADAD0;
+  --border-soft:#E2E2D8;
+  --border-soft2:#E6E6DC;
+  --shadow-soft:rgba(0,0,0,0.12);
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{height:100%;}
@@ -48,7 +69,7 @@ input{font-family:inherit;}
 
 /* ===== LOGIN ===== */
 #loginScreen{
-  background:radial-gradient(circle at 50% 20%, #1a1a1a 0%, var(--black) 65%);
+  background:radial-gradient(circle at 50% 20%, var(--login-glow) 0%, var(--black) 65%);
   align-items:center; justify-content:center; text-align:center; padding:24px;
 }
 .login-vinyl{width:130px; height:130px; border-radius:50%; margin-bottom:28px;
@@ -70,8 +91,8 @@ input{font-family:inherit;}
 .keypad{display:grid; grid-template-columns:repeat(3,72px); gap:16px; justify-content:center;}
 .key{width:72px; height:72px; border-radius:50%; background:var(--black3); color:var(--white);
   font-size:26px; font-weight:600; display:flex; align-items:center; justify-content:center;
-  transition:.12s; border:1px solid #2b2b2b;}
-.key:active{background:var(--yellow); color:var(--black); transform:scale(0.94);}
+  transition:.12s; border:1px solid var(--key-border);}
+.key:active{background:var(--yellow); color:var(--ink); transform:scale(0.94);}
 .key.ghost{background:none; border:none;}
 
 /* ===== APP SHELL ===== */
@@ -83,8 +104,8 @@ input{font-family:inherit;}
 .topbar h1{font-size:24px; font-weight:800; margin:0;}
 .topbar h1 span{color:var(--yellow);}
 .icon-btn{width:42px; height:42px; border-radius:50%; background:var(--black3); display:flex;
-  align-items:center; justify-content:center; font-size:18px; color:var(--white); border:1px solid #2a2a2a;}
-.icon-btn.primary{background:var(--yellow); color:var(--black);}
+  align-items:center; justify-content:center; font-size:18px; color:var(--white); border:1px solid var(--border-soft);}
+.icon-btn.primary{background:var(--yellow); color:var(--ink);}
 
 .search-wrap{padding:0 20px 14px;}
 .storage-wrap{padding:0 20px 12px; display:flex; align-items:center; gap:10px;}
@@ -92,22 +113,22 @@ input{font-family:inherit;}
 .storage-fill{height:100%; background:linear-gradient(90deg,var(--green-bright),var(--yellow)); border-radius:6px; width:0%; transition:width .3s;}
 .storage-label{font-size:11px; color:var(--grey); white-space:nowrap; font-family:'JetBrains Mono',monospace;}
 .search-box{background:var(--black3); border-radius:14px; padding:12px 16px; display:flex; align-items:center;
-  gap:10px; border:1px solid #262626;}
+  gap:10px; border:1px solid var(--border-soft);}
 .search-box input{background:none; border:none; color:var(--white); font-size:15px; width:100%; outline:none;}
 .search-box input::placeholder{color:var(--grey);}
 
 .tabs{display:flex; gap:8px; padding:0 20px 16px; overflow-x:auto;}
 .tab{padding:9px 18px; border-radius:22px; background:var(--black3); color:var(--grey); font-weight:600;
-  font-size:14px; white-space:nowrap; border:1px solid #262626; flex-shrink:0;}
-.tab.active{background:var(--yellow); color:var(--black); border-color:var(--yellow);}
+  font-size:14px; white-space:nowrap; border:1px solid var(--border-soft); flex-shrink:0;}
+.tab.active{background:var(--yellow); color:var(--ink); border-color:var(--yellow);}
 .filter-btn{padding:9px 16px; border-radius:22px; background:var(--black3); color:var(--white); font-weight:600;
-  font-size:13px; border:1px solid #262626; flex-shrink:0; display:flex; align-items:center; gap:6px;}
-.filter-btn.has-filters{background:var(--yellow); color:var(--black); border-color:var(--yellow);}
+  font-size:13px; border:1px solid var(--border-soft); flex-shrink:0; display:flex; align-items:center; gap:6px;}
+.filter-btn.has-filters{background:var(--yellow); color:var(--ink); border-color:var(--yellow);}
 .chip-group-label{color:var(--grey); font-size:12px; font-weight:700; text-transform:uppercase; margin:14px 0 8px;}
 .chip-row{display:flex; flex-wrap:wrap; gap:8px;}
 .chip{padding:8px 14px; border-radius:18px; background:var(--black3); color:var(--white); font-size:13px;
   border:1px solid #2a2a2a; font-weight:600;}
-.chip.active{background:var(--green-bright); color:var(--black); border-color:var(--green-bright);}
+.chip.active{background:var(--green-bright); color:var(--ink); border-color:var(--green-bright);}
 
 .content{flex:1; overflow-y:auto; padding:0 20px 140px;}
 
@@ -139,7 +160,7 @@ input{font-family:inherit;}
 
 /* Playlist cards */
 .playlist-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
-.playlist-card{background:var(--black2); border-radius:18px; padding:16px; border:1px solid #232323;}
+.playlist-card{background:var(--black2); border-radius:18px; padding:16px; border:1px solid var(--border-soft2);}
 .playlist-card .pl-icon{font-size:28px; margin-bottom:8px;}
 .playlist-card h4{margin:0 0 4px; font-size:15px;}
 .playlist-card p{margin:0; color:var(--grey); font-size:12px;}
@@ -156,7 +177,7 @@ input{font-family:inherit;}
 
 /* Mini player */
 .mini-player{position:fixed; left:12px; right:12px; bottom:74px; background:var(--black3); border-radius:16px;
-  padding:10px 12px; display:none; align-items:center; gap:12px; z-index:29; border:1px solid #292929;
+  padding:10px 12px; display:none; align-items:center; gap:12px; z-index:29; border:1px solid var(--border-soft);
   box-shadow:0 8px 24px rgba(0,0,0,0.5);}
 .mini-player.show{display:flex;}
 .mini-disc{width:42px; height:42px; border-radius:50%; background:repeating-radial-gradient(circle,#2a2a2a 0,#2a2a2a 2px,#151515 3px,#151515 5px);
@@ -172,7 +193,7 @@ input{font-family:inherit;}
 .mini-progress-fill{height:100%; background:var(--yellow); border-radius:2px; width:0%;}
 
 /* Now playing full screen */
-#playerScreen{background:linear-gradient(180deg,#131608 0%, var(--black) 45%); padding:0; align-items:stretch; overflow-y:auto;}
+#playerScreen{background:linear-gradient(180deg,var(--player-glow) 0%, var(--black) 45%); padding:0; align-items:stretch; overflow-y:auto;}
 .player-top{display:flex; align-items:center; justify-content:space-between; padding:18px 20px;}
 .player-top .lbl{color:var(--grey); font-size:12px; text-transform:uppercase; letter-spacing:1px; font-weight:600;}
 .player-disc-wrap{display:flex; align-items:center; justify-content:center; padding:8px 0 20px; position:relative;}
@@ -184,19 +205,19 @@ input{font-family:inherit;}
 .player-disc::after{content:"\1F3B5"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   font-size:15%; }
 .player-disc-center{position:absolute; inset:42%; border-radius:50%; background:var(--yellow); display:flex;
-  align-items:center; justify-content:center; color:var(--black); font-size:22px; font-weight:800;}
+  align-items:center; justify-content:center; color:var(--ink); font-size:22px; font-weight:800;}
 .player-video{width:100%; max-height:58vh; background:#000; border-radius:0; object-fit:contain;}
 .player-meta{text-align:center; padding:0 30px;}
 .player-meta h2{margin:0 0 6px; font-size:22px; font-weight:800;}
 .player-meta p{margin:0; color:var(--grey); font-size:14px;}
 .player-progress-wrap{padding:26px 26px 0;}
-.progress-track{height:5px; background:#262626; border-radius:5px; position:relative;}
+.progress-track{height:5px; background:var(--black3); border-radius:5px; position:relative;}
 .progress-fill{height:100%; background:linear-gradient(90deg,var(--yellow),var(--green-bright)); border-radius:5px; width:0%;}
 .progress-times{display:flex; justify-content:space-between; color:var(--grey); font-size:11.5px; margin-top:6px;}
 .player-controls{display:flex; align-items:center; justify-content:space-between; padding:16px 30px 6px;}
 .pc-btn{color:var(--white); font-size:24px; padding:10px;}
 .pc-btn.mid{font-size:40px;}
-.pc-btn.play-toggle{width:70px; height:70px; border-radius:50%; background:var(--yellow); color:var(--black);
+.pc-btn.play-toggle{width:70px; height:70px; border-radius:50%; background:var(--yellow); color:var(--ink);
   display:flex; align-items:center; justify-content:center; font-size:28px;}
 .pc-btn.active-toggle{color:var(--green-bright);}
 .player-extra{display:flex; justify-content:center; gap:34px; padding:10px 0 20px; color:var(--grey); font-size:20px;}
@@ -204,7 +225,7 @@ input{font-family:inherit;}
 
 /* FAB Upload */
 .fab{position:fixed; right:18px; bottom:150px; width:58px; height:58px; border-radius:50%; background:var(--yellow);
-  color:var(--black); font-size:26px; display:flex; align-items:center; justify-content:center; z-index:28;
+  color:var(--ink); font-size:26px; display:flex; align-items:center; justify-content:center; z-index:28;
   box-shadow:0 10px 24px rgba(255,212,0,0.35); font-weight:700;}
 
 /* Modal sheet */
@@ -217,14 +238,14 @@ input{font-family:inherit;}
 .sheet-handle{width:40px; height:4px; background:#3a3a3a; border-radius:4px; margin:0 auto 18px;}
 .field{margin-bottom:16px;}
 .field label{display:block; font-size:12.5px; color:var(--grey); margin-bottom:6px; font-weight:600;}
-.field input, .field select{width:100%; background:var(--black3); border:1px solid #2c2c2c; border-radius:12px;
+.field input, .field select{width:100%; background:var(--black3); border:1px solid var(--border-soft); border-radius:12px;
   padding:12px 14px; color:var(--white); font-size:15px; outline:none;}
 .field input:focus{border-color:var(--yellow);}
 .btn{width:100%; padding:15px; border-radius:14px; font-weight:700; font-size:15px; text-align:center;}
-.btn.primary{background:var(--yellow); color:var(--black);}
-.btn.secondary{background:var(--black3); color:var(--white); border:1px solid #2c2c2c;}
+.btn.primary{background:var(--yellow); color:var(--ink);}
+.btn.secondary{background:var(--black3); color:var(--white); border:1px solid var(--border-soft);}
 .btn.danger{background:rgba(255,92,92,0.12); color:var(--danger);}
-.sheet-row{display:flex; align-items:center; gap:14px; padding:14px 4px; border-bottom:1px solid #262626;}
+.sheet-row{display:flex; align-items:center; gap:14px; padding:14px 4px; border-bottom:1px solid var(--border-soft);}
 .sheet-row:last-child{border:none;}
 .sheet-row .sr-icon{font-size:20px; width:26px; text-align:center;}
 .upload-progress{background:var(--black3); border-radius:12px; padding:14px; margin-bottom:10px;}
@@ -240,10 +261,10 @@ input{font-family:inherit;}
 @keyframes toastin{from{transform:translateY(-20px); opacity:0} to{transform:translateY(0); opacity:1}}
 
 .hidden-file{display:none;}
-.playlist-picker-row{display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid #262626;}
+.playlist-picker-row{display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--border-soft);}
 .checkbox{width:22px; height:22px; border-radius:6px; border:2px solid #3a3a3a; display:flex; align-items:center;
   justify-content:center; flex-shrink:0;}
-.checkbox.checked{background:var(--yellow); border-color:var(--yellow); color:var(--black);}
+.checkbox.checked{background:var(--yellow); border-color:var(--yellow); color:var(--ink);}
 </style>
 </head>
 <body>
@@ -269,6 +290,7 @@ input{font-family:inherit;}
   <div class="topbar">
     <h1>Melo<span>dy</span></h1>
     <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="themeToggleBtn">🌙</button>
       <button class="icon-btn" id="manageUsersBtn">👥</button>
       <button class="icon-btn" id="selectModeBtn">☑️</button>
       <button class="icon-btn" id="lockBtn">🔒</button>
@@ -361,11 +383,18 @@ input{font-family:inherit;}
     <button id="favToggleBtn">⭐</button>
     <button id="timerBtn">⏱</button>
     <button id="addToPlaylistBtn">➕📁</button>
+    <button id="lyricsToggleBtn">📝</button>
   </div>
   <div style="display:flex; align-items:center; gap:10px; padding:0 30px 24px;">
     <span style="color:var(--grey); font-size:16px;">🔉</span>
     <input type="range" id="volumeSlider" min="0" max="100" value="100" style="flex:1; accent-color:var(--yellow);">
     <span style="color:var(--grey); font-size:16px;">🔊</span>
+  </div>
+  <div id="lyricsPanel" style="display:none; padding:0 26px 30px;">
+    <div style="background:var(--black3); border-radius:16px; padding:18px; border:1px solid var(--border-soft);">
+      <div style="color:var(--grey); font-size:12px; font-weight:700; text-transform:uppercase; margin-bottom:10px;">Lyrics</div>
+      <div id="lyricsText" style="white-space:pre-wrap; line-height:1.7; font-size:14.5px;">No lyrics added yet.</div>
+    </div>
   </div>
 </div>
 
@@ -443,6 +472,10 @@ input{font-family:inherit;}
     <div class="field">
       <label>Year</label>
       <input type="text" id="renameYearInput" placeholder="e.g. 1998" inputmode="numeric" maxlength="4">
+    </div>
+    <div class="field">
+      <label>Lyrics (optional)</label>
+      <textarea id="renameLyricsInput" rows="6" placeholder="Paste lyrics here..." style="width:100%; background:var(--black3); border:1px solid var(--border-soft); border-radius:12px; padding:12px 14px; color:var(--white); font-size:14px; resize:vertical; font-family:inherit;"></textarea>
     </div>
     <button class="btn primary" id="saveRenameBtn">Save</button>
   </div>
@@ -527,6 +560,19 @@ const db = getDatabase(fbApp);
 const WORKER_URL = "https://melody-r2-worker.srezycard.workers.dev";
 const AUTH_SECRET = "melody-secret-2026";
 const DEFAULT_PIN = "1973";
+
+// ---------------- THEME ----------------
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeToggleBtn').textContent = theme === 'light' ? '☀️' : '🌙';
+  localStorage.setItem('melody_theme', theme);
+}
+applyTheme(localStorage.getItem('melody_theme') || 'dark');
+document.getElementById('themeToggleBtn').addEventListener('click', ()=>{
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
+});
+
 
 // ---------------- STATE ----------------
 let songs = {};       // key -> {title, artist, key, size, type:'audio'}
@@ -1157,6 +1203,7 @@ document.getElementById('itemRenameRow').addEventListener('click', ()=>{
   document.getElementById('renameArtistInput').value = sheetItem.artist || '';
   document.getElementById('renameMoodInput').value = sheetItem.mood || '';
   document.getElementById('renameYearInput').value = sheetItem.year || '';
+  document.getElementById('renameLyricsInput').value = sheetItem.lyrics || '';
   openSheet('renameOverlay');
 });
 document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
@@ -1185,8 +1232,9 @@ document.getElementById('saveRenameBtn').addEventListener('click', async ()=>{
   const artist = document.getElementById('renameArtistInput').value.trim();
   const mood = document.getElementById('renameMoodInput').value.trim();
   const year = document.getElementById('renameYearInput').value.trim();
+  const lyrics = document.getElementById('renameLyricsInput').value.trim();
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
-  await update(ref(db, node + '/' + sheetItem.id), {title, artist, mood, year});
+  await update(ref(db, node + '/' + sheetItem.id), {title, artist, mood, year, lyrics});
   closeSheets();
   toast('Updated');
 });
@@ -1397,6 +1445,7 @@ async function loadAndPlay(){
   document.getElementById('playerDiscLetter').textContent = (item.title||'M').charAt(0).toUpperCase();
   document.getElementById('miniTitle').textContent = item.title || item.key;
   document.getElementById('miniArtist').textContent = item.artist || 'Unknown';
+  document.getElementById('lyricsText').textContent = item.lyrics && item.lyrics.trim() ? item.lyrics : 'No lyrics added yet.';
 
   let diagMsg = '';
   let playUrl = url;
@@ -1580,6 +1629,10 @@ document.getElementById('favToggleBtn').addEventListener('click', function(){
 document.getElementById('addToPlaylistBtn').addEventListener('click', ()=>{
   const item = currentItem(); if(!item) return;
   openPlaylistPicker(item);
+});
+document.getElementById('lyricsToggleBtn').addEventListener('click', ()=>{
+  const panel = document.getElementById('lyricsPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 });
 
 document.getElementById('itemAddPlaylistRow')._noop = true;
