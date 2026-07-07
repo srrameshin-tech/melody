@@ -466,7 +466,7 @@ function fmtTime(s){
 function escapeHtml(str){
   return (str||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function keyFor(item){ return item.type + "_" + item.key; }
+function keyFor(item){ return item.type + "_" + item.id; }
 function buildFileUrl(key){
   return WORKER_URL + '/' + key.split('/').map(encodeURIComponent).join('/');
 }
@@ -549,10 +549,10 @@ document.getElementById('searchInput').addEventListener('input', renderContent);
 
 // ---------------- RENDER CONTENT ----------------
 function allSongsArr(){
-  return Object.entries(songs).map(([k,v])=>({...v, key:k, type:'audio'}));
+  return Object.entries(songs).map(([id,v])=>({...v, id, type:'audio'}));
 }
 function allVideosArr(){
-  return Object.entries(videos).map(([k,v])=>({...v, key:k, type:'video'}));
+  return Object.entries(videos).map(([id,v])=>({...v, id, type:'video'}));
 }
 function matchesSearch(item, q){
   if(!q) return true;
@@ -663,8 +663,8 @@ function openPlaylistView(pid, pl){
   const items = pl.items ? Object.values(pl.items) : [];
   const resolved = items.map(it => {
     const src = it.type === 'video' ? videos : songs;
-    const data = src[it.key];
-    return data ? {...data, key: it.key, type: it.type} : null;
+    const data = src[it.id];
+    return data ? {...data, id: it.id, type: it.type} : null;
   }).filter(Boolean);
 
   el.innerHTML = "";
@@ -704,7 +704,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
     });
   }catch(e){}
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
-  await remove(ref(db, node + '/' + sheetItem.key));
+  await remove(ref(db, node + '/' + sheetItem.id));
   await remove(ref(db, 'favorites/' + keyFor(sheetItem)));
   toast('Deleted');
 });
@@ -713,7 +713,7 @@ document.getElementById('saveRenameBtn').addEventListener('click', async ()=>{
   const title = document.getElementById('renameTitleInput').value.trim();
   const artist = document.getElementById('renameArtistInput').value.trim();
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
-  await update(ref(db, node + '/' + sheetItem.key), {title, artist});
+  await update(ref(db, node + '/' + sheetItem.id), {title, artist});
   closeSheets();
   toast('Updated');
 });
@@ -729,7 +729,7 @@ function openPlaylistPicker(item){
     list.innerHTML = '<p style="color:var(--grey); font-size:13px;">No playlists yet. Create one below.</p>';
   }
   entries.forEach(([pid, pl])=>{
-    const has = pl.items && Object.values(pl.items).some(it => it.key === item.key && it.type === item.type);
+    const has = pl.items && Object.values(pl.items).some(it => it.id === item.id && it.type === item.type);
     const row = document.createElement('div');
     row.className = 'playlist-picker-row';
     row.innerHTML = `<div class="checkbox ${has?'checked':''}">${has?'✓':''}</div><span>${escapeHtml(pl.name)}</span>`;
@@ -737,11 +737,11 @@ function openPlaylistPicker(item){
       const itemsRef = ref(db, 'playlists/'+pid+'/items');
       const snap = await get(itemsRef);
       const items = snap.val() || {};
-      const existingKey = Object.keys(items).find(k => items[k].key===item.key && items[k].type===item.type);
+      const existingKey = Object.keys(items).find(k => items[k].id===item.id && items[k].type===item.type);
       if(existingKey){
         await remove(ref(db, 'playlists/'+pid+'/items/'+existingKey));
       } else {
-        await push(itemsRef, {key:item.key, type:item.type});
+        await push(itemsRef, {id:item.id, type:item.type});
       }
       openPlaylistPicker(item);
     });
