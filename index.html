@@ -297,7 +297,10 @@ input{font-family:inherit;}
   <div class="player-top">
     <button class="icon-btn" id="playerCollapseBtn">⌄</button>
     <span class="lbl" id="playerPlaylistLabel">Now Playing</span>
-    <button class="icon-btn" id="playerMenuBtn">⋯</button>
+    <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="fullscreenBtn">⛶</button>
+      <button class="icon-btn" id="playerMenuBtn">⋯</button>
+    </div>
   </div>
   <div id="playerVisualWrap">
     <div class="player-disc-wrap" id="audioVisual">
@@ -930,7 +933,11 @@ async function loadAndPlay(){
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
     videoVisual.src = url;
-    try{ await videoVisual.play(); playMsg = 'Playing ✓'; }catch(e){ playMsg = 'Play error: ' + e.message; }
+    try{
+      await videoVisual.play();
+      playMsg = 'Playing ✓';
+      requestVideoFullscreen();
+    }catch(e){ playMsg = 'Play error: ' + e.message; }
   } else {
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
@@ -945,6 +952,14 @@ async function loadAndPlay(){
 function activeMedia(){
   const item = currentItem();
   return (item && item.type === 'video') ? videoVisual : audioEl;
+}
+
+function requestVideoFullscreen(){
+  try{
+    if(videoVisual.requestFullscreen){ videoVisual.requestFullscreen().catch(()=>{}); }
+    else if(videoVisual.webkitEnterFullscreen){ videoVisual.webkitEnterFullscreen(); }
+    else if(videoVisual.webkitRequestFullscreen){ videoVisual.webkitRequestFullscreen(); }
+  }catch(e){}
 }
 
 function updatePlayIcons(playing){
@@ -1039,6 +1054,7 @@ function openPlayerScreen(){
 document.getElementById('playerCollapseBtn').addEventListener('click', ()=>{
   document.getElementById('playerScreen').classList.remove('active');
 });
+document.getElementById('fullscreenBtn').addEventListener('click', requestVideoFullscreen);
 
 document.getElementById('favToggleBtn').addEventListener('click', function(){
   const item = currentItem(); if(!item) return;
