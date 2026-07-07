@@ -100,6 +100,14 @@ input{font-family:inherit;}
 .tab{padding:9px 18px; border-radius:22px; background:var(--black3); color:var(--grey); font-weight:600;
   font-size:14px; white-space:nowrap; border:1px solid #262626; flex-shrink:0;}
 .tab.active{background:var(--yellow); color:var(--black); border-color:var(--yellow);}
+.filter-btn{padding:9px 16px; border-radius:22px; background:var(--black3); color:var(--white); font-weight:600;
+  font-size:13px; border:1px solid #262626; flex-shrink:0; display:flex; align-items:center; gap:6px;}
+.filter-btn.has-filters{background:var(--yellow); color:var(--black); border-color:var(--yellow);}
+.chip-group-label{color:var(--grey); font-size:12px; font-weight:700; text-transform:uppercase; margin:14px 0 8px;}
+.chip-row{display:flex; flex-wrap:wrap; gap:8px;}
+.chip{padding:8px 14px; border-radius:18px; background:var(--black3); color:var(--white); font-size:13px;
+  border:1px solid #2a2a2a; font-weight:600;}
+.chip.active{background:var(--green-bright); color:var(--black); border-color:var(--green-bright);}
 
 .content{flex:1; overflow-y:auto; padding:0 20px 140px;}
 
@@ -276,12 +284,15 @@ input{font-family:inherit;}
     <div class="storage-track"><div class="storage-fill" id="storageFill"></div></div>
     <span class="storage-label" id="storageLabel">Checking storage…</span>
   </div>
-  <div class="tabs" id="mainTabs">
-    <button class="tab active" data-tab="songs">🎵 Songs</button>
-    <button class="tab" data-tab="videos">🎬 Videos</button>
-    <button class="tab" data-tab="playlists">📁 Playlists</button>
-    <button class="tab" data-tab="favorites">⭐ Favorites</button>
-    <button class="tab" data-tab="recent">🕒 Recent</button>
+  <div style="display:flex; align-items:center; gap:8px; padding:0 20px 16px;">
+    <div class="tabs" id="mainTabs" style="padding:0; flex:1; min-width:0;">
+      <button class="tab active" data-tab="songs">🎵 Songs</button>
+      <button class="tab" data-tab="videos">🎬 Videos</button>
+      <button class="tab" data-tab="playlists">📁 Playlists</button>
+      <button class="tab" data-tab="favorites">⭐ Favorites</button>
+      <button class="tab" data-tab="recent">🕒 Recent</button>
+    </div>
+    <button class="filter-btn" id="openFilterBtn">🎚</button>
   </div>
   <div class="content" id="content"></div>
   <div class="fab" id="uploadFab">＋</div>
@@ -425,7 +436,27 @@ input{font-family:inherit;}
       <label>Singer / Artist</label>
       <input type="text" id="renameArtistInput">
     </div>
+    <div class="field">
+      <label>Mood</label>
+      <input type="text" id="renameMoodInput" placeholder="e.g. Melody, Sad, Devotional">
+    </div>
+    <div class="field">
+      <label>Year</label>
+      <input type="text" id="renameYearInput" placeholder="e.g. 1998" inputmode="numeric" maxlength="4">
+    </div>
     <button class="btn primary" id="saveRenameBtn">Save</button>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="filterOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h3>Filter</h3>
+    <div id="filterSingerWrap"></div>
+    <div id="filterMoodWrap"></div>
+    <div id="filterYearWrap"></div>
+    <button class="btn secondary" id="clearFiltersBtn" style="margin-top:14px;">Clear All Filters</button>
+    <button class="btn primary" id="applyFiltersBtn" style="margin-top:10px;">Apply</button>
   </div>
 </div>
 
@@ -506,6 +537,9 @@ let recentPlays = {}; // "type_id" -> {id, type, playedAt}
 let usersData = {};   // pushId -> {name, pin, role}
 let currentUser = null; // {id, name, role}
 let selectMode = false;
+let filterSinger = null;
+let filterMood = null;
+let filterYear = null;
 let selectedItems = new Set(); // "type_id"
 
 let currentTab = "songs";
@@ -698,6 +732,12 @@ function matchesSearch(item, q){
   q = q.toLowerCase();
   return (item.title||"").toLowerCase().includes(q) || (item.artist||"").toLowerCase().includes(q);
 }
+function matchesFilters(item){
+  if(filterSinger && item.artist !== filterSinger) return false;
+  if(filterMood && item.mood !== filterMood) return false;
+  if(filterYear && String(item.year) !== String(filterYear)) return false;
+  return true;
+}
 
 function renderContent(){
   const el = document.getElementById('content');
@@ -705,21 +745,21 @@ function renderContent(){
   el.innerHTML = "";
 
   if(currentTab === 'songs'){
-    const list = allSongsArr().filter(i=>matchesSearch(i,q));
+    const list = allSongsArr().filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "🎵", "No songs yet", "Tap the + button to upload your MP3 songs"));
   } else if(currentTab === 'videos'){
-    const list = allVideosArr().filter(i=>matchesSearch(i,q));
+    const list = allVideosArr().filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "🎬", "No videos yet", "Tap the + button to upload your video songs"));
   } else if(currentTab === 'favorites'){
     const all = [...allSongsArr(), ...allVideosArr()];
-    const list = all.filter(i=>favorites[keyFor(i)]).filter(i=>matchesSearch(i,q));
+    const list = all.filter(i=>favorites[keyFor(i)]).filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "⭐", "No favorites yet", "Tap the star on any song to add it here"));
   } else if(currentTab === 'playlists'){
     el.appendChild(renderPlaylists());
   } else if(currentTab === 'recent'){
     const all = [...allSongsArr(), ...allVideosArr()];
     const entries = Object.values(recentPlays).sort((a,b)=>b.playedAt-a.playedAt).slice(0,40);
-    const list = entries.map(r => all.find(i => i.id===r.id && i.type===r.type)).filter(Boolean).filter(i=>matchesSearch(i,q));
+    const list = entries.map(r => all.find(i => i.id===r.id && i.type===r.type)).filter(Boolean).filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "🕒", "No plays yet", "Songs you play will show up here"));
   }
 }
@@ -921,6 +961,53 @@ function openItemSheet(item){
   document.getElementById('itemDeleteRow').style.display = isAdmin ? 'flex' : 'none';
   openSheet('itemSheetOverlay');
 }
+// ---------------- CATEGORY FILTERS ----------------
+function uniqueValues(list, field){
+  const set = new Set();
+  list.forEach(i => { if(i[field] && String(i[field]).trim()) set.add(String(i[field]).trim()); });
+  return [...set].sort();
+}
+function buildChipGroup(containerId, label, values, current, onPick){
+  const wrap = document.getElementById(containerId);
+  if(values.length === 0){ wrap.innerHTML = ''; return; }
+  const rowId = containerId + '_row';
+  wrap.innerHTML = `<div class="chip-group-label">${label}</div><div class="chip-row" id="${rowId}"></div>`;
+  const row = document.getElementById(rowId);
+  values.forEach(v=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (current === v ? ' active' : '');
+    chip.textContent = v;
+    chip.addEventListener('click', ()=> onPick(current === v ? null : v));
+    row.appendChild(chip);
+  });
+}
+function renderFilterSheet(){
+  const all = [...allSongsArr(), ...allVideosArr()];
+  buildChipGroup('filterSingerWrap', 'Singer', uniqueValues(all,'artist'), filterSinger, (v)=>{
+    filterSinger = v; renderFilterSheet(); renderContent(); updateFilterBtnState();
+  });
+  buildChipGroup('filterMoodWrap', 'Mood', uniqueValues(all,'mood'), filterMood, (v)=>{
+    filterMood = v; renderFilterSheet(); renderContent(); updateFilterBtnState();
+  });
+  buildChipGroup('filterYearWrap', 'Year', uniqueValues(all,'year'), filterYear, (v)=>{
+    filterYear = v; renderFilterSheet(); renderContent(); updateFilterBtnState();
+  });
+}
+function updateFilterBtnState(){
+  const active = !!(filterSinger || filterMood || filterYear);
+  document.getElementById('openFilterBtn').classList.toggle('has-filters', active);
+}
+document.getElementById('openFilterBtn').addEventListener('click', ()=>{
+  renderFilterSheet();
+  openSheet('filterOverlay');
+});
+document.getElementById('clearFiltersBtn').addEventListener('click', ()=>{
+  filterSinger = null; filterMood = null; filterYear = null;
+  renderFilterSheet(); renderContent(); updateFilterBtnState();
+  toast('Filters cleared');
+});
+document.getElementById('applyFiltersBtn').addEventListener('click', ()=> closeSheets());
+
 // ---------------- MANAGE USERS ----------------
 function renderUserList(){
   const wrap = document.getElementById('userListWrap');
@@ -1017,6 +1104,8 @@ document.getElementById('itemRenameRow').addEventListener('click', ()=>{
   closeSheets();
   document.getElementById('renameTitleInput').value = sheetItem.title || '';
   document.getElementById('renameArtistInput').value = sheetItem.artist || '';
+  document.getElementById('renameMoodInput').value = sheetItem.mood || '';
+  document.getElementById('renameYearInput').value = sheetItem.year || '';
   openSheet('renameOverlay');
 });
 document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
@@ -1043,8 +1132,10 @@ document.getElementById('saveRenameBtn').addEventListener('click', async ()=>{
   if(!sheetItem) return;
   const title = document.getElementById('renameTitleInput').value.trim();
   const artist = document.getElementById('renameArtistInput').value.trim();
+  const mood = document.getElementById('renameMoodInput').value.trim();
+  const year = document.getElementById('renameYearInput').value.trim();
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
-  await update(ref(db, node + '/' + sheetItem.id), {title, artist});
+  await update(ref(db, node + '/' + sheetItem.id), {title, artist, mood, year});
   closeSheets();
   toast('Updated');
 });
