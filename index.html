@@ -918,13 +918,57 @@ function renderPlaylists(){
   return wrap;
 }
 
+function sortPlaylistEntries(pl){
+  const entries = pl.items ? Object.entries(pl.items).map(([id,it])=>({id, ...it})) : [];
+  entries.sort((a,b)=>(a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
+  return entries;
+}
+async function movePlaylistItem(pid, entryId, direction){
+  const pl = playlists[pid];
+  if(!pl || !pl.items) return;
+  const entries = sortPlaylistEntries(pl);
+  const idx = entries.findIndex(e=>e.id===entryId);
+  const swapIdx = direction === 'up' ? idx-1 : idx+1;
+  if(idx<0 || swapIdx<0 || swapIdx>=entries.length) return;
+  [entries[idx], entries[swapIdx]] = [entries[swapIdx], entries[idx]];
+  const updates = {};
+  entries.forEach((e,i)=>{ updates['playlists/'+pid+'/items/'+e.id+'/order'] = i; });
+  await update(ref(db), updates);
+}
+function renderPlaylistRow(item, entryId, pid, isFirst, isLast){
+  const row = document.createElement('div');
+  row.className = 'song-row';
+  const isFav = !!favorites[keyFor(item)];
+  row.innerHTML = `
+    <div class="song-thumb ${item.type==='video'?'video':''}">${item.type==='video' ? '🎬' : '🎵'}</div>
+    <div class="song-info">
+      <div class="song-title">${escapeHtml(item.title || item.key)}</div>
+      <div class="song-meta"><span>${escapeHtml(item.artist||'Unknown')}</span></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <button data-action="up" style="color:${isFirst?'#444':'var(--white)'}; font-size:16px; padding:2px 6px;" ${isFirst?'disabled':''}>▲</button>
+      <button data-action="down" style="color:${isLast?'#444':'var(--white)'}; font-size:16px; padding:2px 6px;" ${isLast?'disabled':''}>▼</button>
+    </div>
+    <button class="fav-btn ${isFav?'active':''}" data-action="fav">⭐</button>
+    <button class="more-btn" data-action="more">⋯</button>
+  `;
+  row.addEventListener('click', (e)=>{
+    const action = e.target.closest('[data-action]');
+    if(action && action.dataset.action === 'up'){ movePlaylistItem(pid, entryId, 'up'); return; }
+    if(action && action.dataset.action === 'down'){ movePlaylistItem(pid, entryId, 'down'); return; }
+    if(action && action.dataset.action === 'fav'){ toggleFavorite(item); return; }
+    if(action && action.dataset.action === 'more'){ openItemSheet(item); return; }
+    playFromList(item);
+  });
+  return row;
+}
 function openPlaylistView(pid, pl){
   const el = document.getElementById('content');
-  const items = pl.items ? Object.values(pl.items) : [];
-  const resolved = items.map(it => {
-    const src = it.type === 'video' ? videos : songs;
-    const data = src[it.id];
-    return data ? {...data, id: it.id, type: it.type} : null;
+  const entries = sortPlaylistEntries(pl);
+  const resolved = entries.map(e => {
+    const src = e.type === 'video' ? videos : songs;
+    const data = src[e.id];
+    return data ? {...data, id: e.id, type: e.type, entryId: e.id} : null;
   }).filter(Boolean);
 
   el.innerHTML = "";
@@ -933,7 +977,14 @@ function openPlaylistView(pid, pl){
   header.innerHTML = `<h3>◀ ${escapeHtml(pl.name)}</h3><span></span>`;
   header.addEventListener('click', ()=> renderContent());
   el.appendChild(header);
-  el.appendChild(renderList(resolved, "📁", "Empty playlist", "Add songs from the ⋯ menu"));
+
+  if(resolved.length === 0){
+    el.appendChild(renderList([], "📁", "Empty playlist", "Add songs from the ⋯ menu"));
+  } else {
+    resolved.forEach((item, i)=>{
+      el.appendChild(renderPlaylistRow(item, entries[i].id, pid, i===0, i===resolved.length-1));
+    });
+  }
   currentTab = '__playlistview__';
 }
 
