@@ -87,6 +87,10 @@ input{font-family:inherit;}
 .icon-btn.primary{background:var(--yellow); color:var(--black);}
 
 .search-wrap{padding:0 20px 14px;}
+.storage-wrap{padding:0 20px 12px; display:flex; align-items:center; gap:10px;}
+.storage-track{flex:1; height:6px; background:var(--black3); border-radius:6px; overflow:hidden;}
+.storage-fill{height:100%; background:linear-gradient(90deg,var(--green-bright),var(--yellow)); border-radius:6px; width:0%; transition:width .3s;}
+.storage-label{font-size:11px; color:var(--grey); white-space:nowrap; font-family:'JetBrains Mono',monospace;}
 .search-box{background:var(--black3); border-radius:14px; padding:12px 16px; display:flex; align-items:center;
   gap:10px; border:1px solid #262626;}
 .search-box input{background:none; border:none; color:var(--white); font-size:15px; width:100%; outline:none;}
@@ -263,6 +267,10 @@ input{font-family:inherit;}
       <span>🔍</span>
       <input type="text" id="searchInput" placeholder="Search songs, singers...">
     </div>
+  </div>
+  <div class="storage-wrap">
+    <div class="storage-track"><div class="storage-fill" id="storageFill"></div></div>
+    <span class="storage-label" id="storageLabel">Checking storage…</span>
   </div>
   <div class="tabs" id="mainTabs">
     <button class="tab active" data-tab="songs">🎵 Songs</button>
@@ -516,6 +524,7 @@ function showApp(){
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appScreen').classList.add('active');
   sessionStorage.setItem('melody_unlocked','1');
+  refreshStorageUsage();
 }
 document.getElementById('lockBtn').addEventListener('click', ()=>{
   sessionStorage.removeItem('melody_unlocked');
@@ -526,6 +535,29 @@ document.getElementById('lockBtn').addEventListener('click', ()=>{
 if(sessionStorage.getItem('melody_unlocked') === '1'){
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appScreen').classList.add('active');
+  refreshStorageUsage();
+}
+
+const FREE_TIER_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
+function formatBytes(bytes){
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  if(bytes < 1024*1024*1024) return (bytes/(1024*1024)).toFixed(1) + ' MB';
+  return (bytes/(1024*1024*1024)).toFixed(2) + ' GB';
+}
+async function refreshStorageUsage(){
+  const fill = document.getElementById('storageFill');
+  const label = document.getElementById('storageLabel');
+  try{
+    const resp = await fetch(WORKER_URL + '/list', { cache: 'no-store' });
+    const files = await resp.json();
+    const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    const pct = Math.min(100, (totalBytes / FREE_TIER_BYTES) * 100);
+    fill.style.width = pct.toFixed(2) + '%';
+    label.textContent = `${formatBytes(totalBytes)} / 10 GB`;
+    if(pct > 85) fill.style.background = 'linear-gradient(90deg,#FFB020,#FF5C5C)';
+  }catch(e){
+    label.textContent = 'Storage: unavailable';
+  }
 }
 
 // ---------------- FIREBASE SYNC ----------------
@@ -710,6 +742,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   await remove(ref(db, node + '/' + sheetItem.id));
   await remove(ref(db, 'favorites/' + keyFor(sheetItem)));
   toast('Deleted');
+  refreshStorageUsage();
 });
 document.getElementById('saveRenameBtn').addEventListener('click', async ()=>{
   if(!sheetItem) return;
@@ -869,6 +902,7 @@ async function handleFiles(fileList, kind){
     }
   }
   toast('Upload complete');
+  refreshStorageUsage();
 }
 
 function uploadWithProgress(key, file, onProgress){
