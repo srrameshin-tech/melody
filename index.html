@@ -1054,10 +1054,15 @@ document.getElementById('timerOverlay').addEventListener('click', (e)=>{
 });
 
 // ---------------- PWA install prompt tweaks (offline shell) ----------------
+// Actively unregister any previously-installed service worker so future
+// updates always load fresh instead of getting stuck on old cached versions.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-  });
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
+  }).catch(()=>{});
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(()=>{});
+  }
 }
 </script>
 </body>
