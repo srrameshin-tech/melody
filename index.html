@@ -1612,7 +1612,7 @@ async function loadAndPlay(){
   document.getElementById('miniArtist').textContent = item.artist || 'Unknown';
   document.getElementById('lyricsText').textContent = item.lyrics && item.lyrics.trim() ? item.lyrics : 'No lyrics added yet.';
 
-  let diagMsg = '';
+  let errMsg = '';
   let playUrl = url;
   const cachedOffline = await isCached(url);
   if(cachedOffline){
@@ -1621,18 +1621,9 @@ async function loadAndPlay(){
       const cachedResp = await cache.match(url);
       const blob = await cachedResp.blob();
       playUrl = URL.createObjectURL(blob);
-      diagMsg = 'Offline cache ✓';
-    }catch(e){ diagMsg = 'Cache read failed: ' + e.message; }
-  } else {
-    try {
-      const diag = await fetch(url, { method: 'GET' });
-      diagMsg = `HTTP ${diag.status} | ${diag.headers.get('content-type')} | ${diag.headers.get('content-length')}b`;
-    } catch(diagErr){
-      diagMsg = 'Fetch failed: ' + diagErr.message;
-    }
+    }catch(e){ errMsg = 'Cache read failed: ' + e.message; }
   }
 
-  let playMsg = '';
   fadeOutStarted = false;
   if(item.type === 'video'){
     audioEl.pause(); audioEl.src = '';
@@ -1642,9 +1633,8 @@ async function loadAndPlay(){
     videoVisual.src = playUrl;
     try{
       await videoVisual.play();
-      playMsg = 'Playing ✓';
       requestVideoFullscreen();
-    }catch(e){ playMsg = 'Play error: ' + e.message; }
+    }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   } else {
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
@@ -1652,11 +1642,10 @@ async function loadAndPlay(){
     audioEl.volume = 0;
     try{
       await audioEl.play();
-      playMsg = 'Playing ✓';
       fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
-    }catch(e){ playMsg = 'Play error: ' + e.message; }
+    }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   }
-  toast(diagMsg + ' — ' + playMsg);
+  if(errMsg) toast('⚠️ ' + errMsg);
   updatePlayIcons(true);
   showMiniPlayer();
   updateMediaSession(item);
