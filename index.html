@@ -1464,7 +1464,7 @@ async function openGoogleDrivePicker(){
 
 function showDrivePicker(){
   const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-    .setMimeTypes('audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/aac,audio/ogg,audio/flac,audio/amr,audio/3gpp,video/mp4,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,video/3gpp')
+    .setMimeTypes('audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/aac,audio/ogg,audio/flac,audio/amr,audio/3gpp,video/mp4,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,video/3gpp,application/vnd.google-apps.folder')
     .setIncludeFolders(true)
     .setSelectFolderEnabled(false);
   const picker = new google.picker.PickerBuilder()
