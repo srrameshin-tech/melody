@@ -160,10 +160,13 @@ input{font-family:inherit;}
 
 /* Playlist cards */
 .playlist-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
-.playlist-card{background:var(--black2); border-radius:18px; padding:16px; border:1px solid var(--border-soft2);}
+.playlist-card{background:var(--black2); border-radius:18px; padding:16px; border:1px solid var(--border-soft2); position:relative;}
 .playlist-card .pl-icon{font-size:28px; margin-bottom:8px;}
-.playlist-card h4{margin:0 0 4px; font-size:15px;}
+.playlist-card h4{margin:0 0 4px; font-size:15px; padding-right:22px;}
 .playlist-card p{margin:0; color:var(--grey); font-size:12px;}
+.pl-delete-btn{position:absolute; top:12px; right:12px; background:none; border:none; color:var(--grey);
+  font-size:15px; padding:2px; line-height:1;}
+.pl-delete-btn:active{color:#FF5C5C;}
 .playlist-card.add{border:2px dashed #333; display:flex; flex-direction:column; align-items:center;
   justify-content:center; color:var(--yellow);}
 
@@ -958,17 +961,37 @@ function toggleFavorite(item){
   }
 }
 
+async function deletePlaylist(pid, name){
+  if(!isAdminUser()){ toast('Only Admin can delete playlists'); return; }
+  if(!confirm('Delete playlist "' + (name||'') + '"? Songs themselves will NOT be deleted, only this playlist.')) return;
+  await remove(ref(db, 'playlists/' + pid));
+  if(currentPlaylistId === pid){
+    currentTab = 'playlists';
+    currentPlaylistId = null;
+  }
+  toast('Playlist deleted');
+  renderContent();
+}
+
 function renderPlaylists(){
   const wrap = document.createElement('div');
   const grid = document.createElement('div');
   grid.className = 'playlist-grid';
   const entries = Object.entries(playlists);
+  const isAdmin = isAdminUser();
   entries.forEach(([pid, pl]) => {
     const card = document.createElement('div');
     card.className = 'playlist-card';
     const count = pl.items ? Object.keys(pl.items).length : 0;
-    card.innerHTML = `<div class="pl-icon">📁</div><h4>${escapeHtml(pl.name)}</h4><p>${count} item${count!==1?'s':''}</p>`;
-    card.addEventListener('click', ()=> openPlaylistView(pid, pl));
+    card.innerHTML = `${isAdmin ? '<button class="pl-delete-btn" data-action="delete-playlist">🗑️</button>' : ''}<div class="pl-icon">📁</div><h4>${escapeHtml(pl.name)}</h4><p>${count} item${count!==1?'s':''}</p>`;
+    card.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-action="delete-playlist"]')){
+        e.stopPropagation();
+        deletePlaylist(pid, pl.name);
+        return;
+      }
+      openPlaylistView(pid, pl);
+    });
     grid.appendChild(card);
   });
   const addCard = document.createElement('div');
@@ -1046,8 +1069,15 @@ function renderPlaylistViewContent(pid, pl){
 
   const header = document.createElement('div');
   header.className = 'section-title';
-  header.innerHTML = `<h3>◀ ${escapeHtml(pl.name)}</h3><span></span>`;
-  header.addEventListener('click', ()=>{ currentTab = 'playlists'; currentPlaylistId = null; renderContent(); });
+  header.innerHTML = `<h3>◀ ${escapeHtml(pl.name)}</h3><span>${isAdminUser() ? '<button data-action="delete-playlist" style="background:none;border:none;color:#FF5C5C;font-size:15px;">🗑️</button>' : ''}</span>`;
+  header.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-action="delete-playlist"]')){
+      e.stopPropagation();
+      deletePlaylist(pid, pl.name);
+      return;
+    }
+    currentTab = 'playlists'; currentPlaylistId = null; renderContent();
+  });
   wrap.appendChild(header);
 
   if(resolved.length === 0){
