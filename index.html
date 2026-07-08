@@ -750,9 +750,28 @@ async function refreshStorageUsage(){
 }
 
 // ---------------- FIREBASE SYNC ----------------
-onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); });
-onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); });
-onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); });
+onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
+onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
+onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
+
+// Self-healing: remove playlist item entries that point to songs/videos
+// which no longer exist (leftover from before delete used to clean these up).
+async function autoCleanupPlaylists(){
+  if(!isAdminUser()) return;
+  const updates = {};
+  Object.entries(playlists).forEach(([pid, pl])=>{
+    if(!pl.items) return;
+    Object.entries(pl.items).forEach(([entryId, it])=>{
+      const src = it.type === 'video' ? videos : songs;
+      if(!src || !src[it.id]){
+        updates['playlists/'+pid+'/items/'+entryId] = null;
+      }
+    });
+  });
+  if(Object.keys(updates).length){
+    await update(ref(db), updates);
+  }
+}
 onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'users'), snap => { usersData = snap.val() || {}; renderUserList(); });
@@ -982,7 +1001,7 @@ function renderPlaylists(){
   entries.forEach(([pid, pl]) => {
     const card = document.createElement('div');
     card.className = 'playlist-card';
-    const count = pl.items ? Object.keys(pl.items).length : 0;
+    const count = getPlaylistResolvedItems(pid).length;
     card.innerHTML = `${isAdmin ? '<button class="pl-delete-btn" data-action="delete-playlist">🗑️</button>' : ''}<div class="pl-icon">📁</div><h4>${escapeHtml(pl.name)}</h4><p>${count} item${count!==1?'s':''}</p>`;
     card.addEventListener('click', (e)=>{
       if(e.target.closest('[data-action="delete-playlist"]')){
@@ -1009,20 +1028,20 @@ function renderPlaylists(){
 }
 
 function sortPlaylistEntries(pl){
-  const entries = pl.items ? Object.entries(pl.items).map(([id,it])=>({id, ...it})) : [];
-  entries.sort((a,b)=>(a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
+  const entries = pl.items ? Object.entries(pl.items).map(([entryId,it])=>({...it, entryId})) : [];
+  entries.sort((a,b)=>(a.order ?? 0) - (b.order ?? 0) || a.entryId.localeCompare(b.entryId));
   return entries;
 }
 async function movePlaylistItem(pid, entryId, direction){
   const pl = playlists[pid];
   if(!pl || !pl.items) return;
   const entries = sortPlaylistEntries(pl);
-  const idx = entries.findIndex(e=>e.id===entryId);
+  const idx = entries.findIndex(e=>e.entryId===entryId);
   const swapIdx = direction === 'up' ? idx-1 : idx+1;
   if(idx<0 || swapIdx<0 || swapIdx>=entries.length) return;
   [entries[idx], entries[swapIdx]] = [entries[swapIdx], entries[idx]];
   const updates = {};
-  entries.forEach((e,i)=>{ updates['playlists/'+pid+'/items/'+e.id+'/order'] = i; });
+  entries.forEach((e,i)=>{ updates['playlists/'+pid+'/items/'+e.entryId+'/order'] = i; });
   await update(ref(db), updates);
 }
 function renderPlaylistRow(item, entryId, pid, isFirst, isLast){
@@ -1059,12 +1078,11 @@ function getPlaylistResolvedItems(pid){
   return entries.map(e => {
     const src = e.type === 'video' ? videos : songs;
     const data = src[e.id];
-    return data ? {...data, id: e.id, type: e.type, entryId: e.id} : null;
+    return data ? {...data, id: e.id, type: e.type, entryId: e.entryId} : null;
   }).filter(Boolean);
 }
 function renderPlaylistViewContent(pid, pl){
   const wrap = document.createElement('div');
-  const entries = sortPlaylistEntries(pl);
   const resolved = getPlaylistResolvedItems(pid);
 
   const header = document.createElement('div');
@@ -1084,7 +1102,7 @@ function renderPlaylistViewContent(pid, pl){
     wrap.appendChild(renderList([], "📁", "Empty playlist", "Add songs from the ⋯ menu"));
   } else {
     resolved.forEach((item, i)=>{
-      wrap.appendChild(renderPlaylistRow(item, entries[i].id, pid, i===0, i===resolved.length-1));
+      wrap.appendChild(renderPlaylistRow(item, item.entryId, pid, i===0, i===resolved.length-1));
     });
   }
   return wrap;
