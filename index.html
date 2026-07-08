@@ -266,6 +266,12 @@ input{font-family:inherit;}
   justify-content:center; flex-shrink:0;}
 .checkbox.checked{background:var(--yellow); border-color:var(--yellow); color:var(--ink);}
 </style>
+<script>
+  window.gapiReady = false;
+  window.gisReady = false;
+</script>
+<script async defer src="https://apis.google.com/js/api.js" onload="gapi.load('picker', ()=>{ window.gapiReady = true; })"></script>
+<script async defer src="https://accounts.google.com/gsi/client" onload="window.gisReady = true;"></script>
 </head>
 <body>
 
@@ -408,6 +414,7 @@ input{font-family:inherit;}
     <h3>Add to Melody</h3>
     <div class="sheet-row" id="pickAudioBtn"><span class="sr-icon">🎵</span><span>Upload Songs (MP3)</span></div>
     <div class="sheet-row" id="pickVideoBtn"><span class="sr-icon">🎬</span><span>Upload Videos</span></div>
+    <div class="sheet-row" id="pickDriveBtn"><span class="sr-icon">📥</span><span>Import from Google Drive</span></div>
     <div class="sheet-row" id="createPlaylistBtn"><span class="sr-icon">📁</span><span>Create Playlist</span></div>
     <input type="file" id="audioFileInput" class="hidden-file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.amr" multiple>
     <input type="file" id="videoFileInput" class="hidden-file" accept="video/*,.mp4,.mkv,.mov,.webm,.3gp,.avi" multiple>
@@ -1311,6 +1318,7 @@ document.getElementById('uploadFab').addEventListener('click', ()=>{
 });
 document.getElementById('pickAudioBtn').addEventListener('click', ()=> document.getElementById('audioFileInput').click());
 document.getElementById('pickVideoBtn').addEventListener('click', ()=> document.getElementById('videoFileInput').click());
+document.getElementById('pickDriveBtn').addEventListener('click', ()=> openGoogleDrivePicker());
 
 document.getElementById('audioFileInput').addEventListener('change', (e)=> handleFiles(e.target.files, 'audio'));
 document.getElementById('videoFileInput').addEventListener('change', (e)=> handleFiles(e.target.files, 'video'));
@@ -1412,6 +1420,122 @@ function uploadWithProgress(key, file, onProgress){
     xhr.onerror = ()=> reject(new Error('Network error during upload'));
     xhr.send(file);
   });
+}
+
+// ---------------- GOOGLE DRIVE IMPORT ----------------
+const GOOGLE_CLIENT_ID = "433652118874-o6oegjr970mhelv5ao59tdfianeve6aj.apps.googleusercontent.com";
+const GOOGLE_API_KEY = "AIzaSyBi7PSdoQ2lCdb9L_jsbyUZqZY0S3iT-jw";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+let driveAccessToken = null;
+let driveTokenClient = null;
+
+function waitForGoogleLibs(){
+  return new Promise((resolve)=>{
+    const check = ()=>{
+      if(window.gapiReady && window.gisReady) resolve();
+      else setTimeout(check, 200);
+    };
+    check();
+  });
+}
+
+async function openGoogleDrivePicker(){
+  if(!isAdminUser()){ toast('Only Admin can upload'); return; }
+  toast('Loading Google Drive...');
+  await waitForGoogleLibs();
+  if(!driveTokenClient){
+    driveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_DRIVE_SCOPE,
+      callback: ''
+    });
+  }
+  driveTokenClient.callback = (resp)=>{
+    if(resp.error){ toast('Google sign-in failed'); return; }
+    driveAccessToken = resp.access_token;
+    showDrivePicker();
+  };
+  if(driveAccessToken){
+    showDrivePicker();
+  } else {
+    driveTokenClient.requestAccessToken({ prompt: 'consent' });
+  }
+}
+
+function showDrivePicker(){
+  const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
+    .setMimeTypes('audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/aac,audio/ogg,audio/flac,audio/amr,audio/3gpp,video/mp4,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,video/3gpp')
+    .setIncludeFolders(true)
+    .setSelectFolderEnabled(false);
+  const picker = new google.picker.PickerBuilder()
+    .addView(view)
+    .setOAuthToken(driveAccessToken)
+    .setDeveloperKey(GOOGLE_API_KEY)
+    .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+    .setCallback(drivePickerCallback)
+    .build();
+  picker.setVisible(true);
+}
+
+async function drivePickerCallback(data){
+  if(data.action !== google.picker.Action.PICKED) return;
+  closeSheets();
+  const docs = data.docs;
+  const wrap = document.getElementById('uploadProgressWrap');
+  for(const doc of docs){
+    const rowId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    const row = document.createElement('div');
+    row.className = 'upload-progress';
+    row.innerHTML = `<div class="fname">${escapeHtml(doc.name)}</div>
+      <div class="upload-bar"><div class="upload-bar-fill" id="${rowId}"></div></div>
+      <div class="upload-status" id="${rowId}_status">Downloading from Drive...</div>`;
+    wrap.appendChild(row);
+    const statusEl = document.getElementById(rowId+'_status');
+
+    try {
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${doc.id}?alt=media`, {
+        headers: { Authorization: 'Bearer ' + driveAccessToken }
+      });
+      if(!resp.ok) throw new Error('Drive download failed: HTTP ' + resp.status);
+      const blob = await resp.blob();
+      const file = new File([blob], doc.name, { type: doc.mimeType || blob.type });
+
+      const realKind = detectRealKind(file) || ((doc.mimeType||'').startsWith('video/') ? 'video' : 'audio');
+      const folder = realKind === 'video' ? 'videos' : 'songs';
+      const objectKey = folder + '/' + Date.now() + '_' + sanitizeFilename(file.name);
+
+      statusEl.textContent = 'Uploading...';
+      await uploadWithProgress(objectKey, file, (pct)=>{
+        const fill = document.getElementById(rowId);
+        if(fill) fill.style.width = pct + '%';
+      });
+
+      statusEl.textContent = 'Verifying...';
+      const verifyUrl = buildFileUrl(objectKey) + '?v=' + Date.now();
+      const verifyResp = await fetch(verifyUrl, { method: 'GET', cache: 'no-store' });
+      const storedLen = parseInt(verifyResp.headers.get('content-length') || '0', 10);
+      if(!verifyResp.ok) throw new Error(`Verify failed: HTTP ${verifyResp.status}`);
+      if(storedLen !== file.size) throw new Error(`Size mismatch: expected ${file.size}b, got ${storedLen}b`);
+
+      statusEl.textContent = 'Saved ✓';
+      statusEl.style.color = 'var(--green-bright)';
+
+      const titleGuess = file.name.replace(/\.[^/.]+$/, "");
+      const dbNode = realKind === 'video' ? 'videos' : 'songs';
+      await push(ref(db, dbNode), {
+        title: titleGuess,
+        artist: "Unknown",
+        key: objectKey,
+        size: file.size,
+        uploaded: Date.now()
+      });
+    } catch(err){
+      statusEl.textContent = 'Failed: ' + err.message;
+      statusEl.style.color = '#FF5C5C';
+    }
+  }
+  toast('Google Drive import complete');
+  refreshStorageUsage();
 }
 
 // ---------------- PLAYBACK ----------------
