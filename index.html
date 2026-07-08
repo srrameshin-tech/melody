@@ -599,6 +599,7 @@ let filterYear = null;
 let selectedItems = new Set(); // "type_id"
 
 let currentTab = "songs";
+let currentPlaylistId = null;
 let currentQueue = [];   // array of {type,key,title,artist}
 let currentIndex = -1;
 let isShuffle = false;
@@ -817,6 +818,15 @@ function renderContent(){
     const entries = Object.values(recentPlays).sort((a,b)=>b.playedAt-a.playedAt).slice(0,40);
     const list = entries.map(r => all.find(i => i.id===r.id && i.type===r.type)).filter(Boolean).filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "🕒", "No plays yet", "Songs you play will show up here"));
+  } else if(currentTab === '__playlistview__'){
+    if(currentPlaylistId && playlists[currentPlaylistId]){
+      el.appendChild(renderPlaylistViewContent(currentPlaylistId, playlists[currentPlaylistId]));
+    } else {
+      // Playlist itself was deleted or no longer exists — fall back to the playlists grid
+      currentTab = 'playlists';
+      currentPlaylistId = null;
+      el.appendChild(renderPlaylists());
+    }
   }
 }
 
@@ -929,6 +939,7 @@ document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
     const node = item.type === 'video' ? 'videos' : 'songs';
     await remove(ref(db, node + '/' + item.id));
     await remove(ref(db, 'favorites/' + keyFor(item)));
+    await removeItemFromAllPlaylists(item);
   }
   selectMode = false;
   selectedItems.clear();
@@ -1018,8 +1029,8 @@ function renderPlaylistRow(item, entryId, pid, isFirst, isLast){
   });
   return row;
 }
-function openPlaylistView(pid, pl){
-  const el = document.getElementById('content');
+function renderPlaylistViewContent(pid, pl){
+  const wrap = document.createElement('div');
   const entries = sortPlaylistEntries(pl);
   const resolved = entries.map(e => {
     const src = e.type === 'video' ? videos : songs;
@@ -1027,21 +1038,25 @@ function openPlaylistView(pid, pl){
     return data ? {...data, id: e.id, type: e.type, entryId: e.id} : null;
   }).filter(Boolean);
 
-  el.innerHTML = "";
   const header = document.createElement('div');
   header.className = 'section-title';
   header.innerHTML = `<h3>◀ ${escapeHtml(pl.name)}</h3><span></span>`;
-  header.addEventListener('click', ()=> renderContent());
-  el.appendChild(header);
+  header.addEventListener('click', ()=>{ currentTab = 'playlists'; currentPlaylistId = null; renderContent(); });
+  wrap.appendChild(header);
 
   if(resolved.length === 0){
-    el.appendChild(renderList([], "📁", "Empty playlist", "Add songs from the ⋯ menu"));
+    wrap.appendChild(renderList([], "📁", "Empty playlist", "Add songs from the ⋯ menu"));
   } else {
     resolved.forEach((item, i)=>{
-      el.appendChild(renderPlaylistRow(item, entries[i].id, pid, i===0, i===resolved.length-1));
+      wrap.appendChild(renderPlaylistRow(item, entries[i].id, pid, i===0, i===resolved.length-1));
     });
   }
+  return wrap;
+}
+function openPlaylistView(pid, pl){
   currentTab = '__playlistview__';
+  currentPlaylistId = pid;
+  renderContent();
 }
 
 // ---------------- ITEM SHEET (rename/delete/fav/playlist) ----------------
@@ -1216,6 +1231,21 @@ document.getElementById('itemRenameRow').addEventListener('click', ()=>{
   document.getElementById('renameLyricsInput').value = sheetItem.lyrics || '';
   openSheet('renameOverlay');
 });
+async function removeItemFromAllPlaylists(item){
+  const updates = {};
+  Object.entries(playlists).forEach(([pid, pl])=>{
+    if(!pl.items) return;
+    Object.entries(pl.items).forEach(([entryId, it])=>{
+      if(it.type === item.type && it.id === item.id){
+        updates['playlists/'+pid+'/items/'+entryId] = null;
+      }
+    });
+  });
+  if(Object.keys(updates).length){
+    await update(ref(db), updates);
+  }
+}
+
 document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   if(!isAdminUser()){ toast('Only Admin can delete'); return; }
   closeSheets();
@@ -1229,6 +1259,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
   await remove(ref(db, node + '/' + sheetItem.id));
   await remove(ref(db, 'favorites/' + keyFor(sheetItem)));
+  await removeItemFromAllPlaylists(sheetItem);
   if('caches' in window){
     try{ const cache = await caches.open(OFFLINE_CACHE); await cache.delete(buildFileUrl(sheetItem.key)); }catch(e){}
   }
