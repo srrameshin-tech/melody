@@ -330,8 +330,19 @@ input{font-family:inherit;}
   <div class="mini-player" id="bulkActionBar" style="display:none; justify-content:space-between;">
     <span id="bulkCountLabel" style="font-weight:700;">0 selected</span>
     <div style="display:flex; gap:14px;">
+      <button id="bulkDownloadBtn" style="color:var(--yellow); font-weight:700;">⬇️ Download</button>
       <button id="bulkDeleteBtn" style="color:var(--danger); font-weight:700;">Delete</button>
       <button id="bulkCancelBtn" style="color:var(--grey); font-weight:700;">Cancel</button>
+    </div>
+  </div>
+  <div class="mini-player" id="resumeBanner" style="display:none; justify-content:space-between;">
+    <div style="overflow:hidden;">
+      <div style="font-size:11px; color:var(--grey);">Continue listening</div>
+      <div id="resumeTitle" style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+      <button id="resumePlayBtn" style="background:var(--yellow); color:var(--ink); border-radius:50%; width:38px; height:38px; font-size:16px;">▶️</button>
+      <button id="resumeDismissBtn" style="color:var(--grey); font-size:18px;">✕</button>
     </div>
   </div>
   <div class="mini-player" id="miniPlayer">
@@ -434,6 +445,7 @@ input{font-family:inherit;}
     <div class="sheet-row" id="itemFavRow"><span class="sr-icon">⭐</span><span id="itemFavLabel">Add to favorites</span></div>
     <div class="sheet-row" id="itemAddPlaylistRow"><span class="sr-icon">📁</span><span>Add to playlist</span></div>
     <div class="sheet-row" id="itemDownloadRow"><span class="sr-icon">⬇️</span><span id="itemDownloadLabel">Download for offline</span></div>
+    <div class="sheet-row" id="itemShareRow"><span class="sr-icon">🔗</span><span>Share</span></div>
     <div class="sheet-row" id="itemRenameRow"><span class="sr-icon">✏️</span><span>Rename</span></div>
     <div class="sheet-row" id="itemDeleteRow"><span class="sr-icon">🗑️</span><span style="color:#FF5C5C;">Delete</span></div>
   </div>
@@ -607,6 +619,7 @@ let currentPlaylistId = null;
 let currentQueue = [];   // array of {type,key,title,artist}
 let currentIndex = -1;
 let isShuffle = false;
+let shuffleBag = []; // remaining indices to play in shuffle mode (no-repeat until bag exhausted)
 let repeatMode = 0; // 0 off, 1 all, 2 one
 let sleepTimerHandle = null;
 let sleepTimeoutAt = null;
@@ -633,6 +646,16 @@ function escapeHtml(str){
 function keyFor(item){ return item.type + "_" + item.id; }
 function buildFileUrl(key){
   return WORKER_URL + '/' + key.split('/').map(encodeURIComponent).join('/');
+}
+// Guess {artist, title} from a filename like "Artist - Title.mp3" or "Artist_Title.mp3"
+function guessTagsFromFilename(filename){
+  let base = filename.replace(/\.[^/.]+$/, "");
+  base = base.replace(/[_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  const sepMatch = base.split(/\s+-\s+/);
+  if(sepMatch.length >= 2){
+    return { artist: sepMatch[0].trim(), title: sepMatch.slice(1).join(' - ').trim() };
+  }
+  return { artist: '', title: base };
 }
 
 // ---------------- OFFLINE DOWNLOAD (Cache Storage API) ----------------
@@ -703,6 +726,7 @@ function showApp(){
   refreshStorageUsage();
   refreshOfflineCache();
   applyRoleUI();
+  checkResumeState();
 }
 document.getElementById('lockBtn').addEventListener('click', ()=>{
   sessionStorage.removeItem('melody_unlocked');
@@ -751,8 +775,8 @@ async function refreshStorageUsage(){
 }
 
 // ---------------- FIREBASE SYNC ----------------
-onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); });
-onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); });
+onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); });
+onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); });
 onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
 
 // Self-healing: remove playlist item entries that point to songs/videos
@@ -933,6 +957,26 @@ document.getElementById('bulkCancelBtn').addEventListener('click', ()=>{
   selectedItems.clear();
   updateBulkBar();
   renderContent();
+});
+document.getElementById('bulkDownloadBtn').addEventListener('click', async ()=>{
+  if(selectedItems.size === 0) return;
+  const all = [...allSongsArr(), ...allVideosArr()];
+  const items = [...selectedItems].map(selId=>{
+    const [type, id] = [selId.split('_')[0], selId.split('_').slice(1).join('_')];
+    return all.find(i => i.type===type && i.id===id);
+  }).filter(Boolean);
+  toast(`Downloading ${items.length} item(s) for offline...`);
+  let done = 0, failed = 0;
+  for(const item of items){
+    try{
+      const url = buildFileUrl(item.key);
+      if(await isCached(url)){ done++; continue; }
+      await downloadItemOffline(item);
+      done++;
+    }catch(e){ failed++; }
+  }
+  refreshOfflineCache();
+  toast(failed ? `Downloaded ${done}, failed ${failed}` : `Downloaded ${done} item(s) ✓ available offline`);
 });
 document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
   if(!isAdminUser()){ toast('Only Admin can delete'); return; }
@@ -1238,6 +1282,37 @@ document.getElementById('deleteUserBtn').addEventListener('click', async ()=>{
 document.getElementById('itemPlayRow').addEventListener('click', ()=>{ closeSheets(); if(sheetItem) playFromList(sheetItem); });
 document.getElementById('itemFavRow').addEventListener('click', ()=>{ if(sheetItem) toggleFavorite(sheetItem); closeSheets(); });
 document.getElementById('itemAddPlaylistRow').addEventListener('click', ()=>{ closeSheets(); openPlaylistPicker(sheetItem); });
+document.getElementById('itemShareRow').addEventListener('click', async ()=>{
+  closeSheets();
+  if(!sheetItem) return;
+  const shareUrl = buildFileUrl(sheetItem.key);
+  const shareTitle = sheetItem.title || 'Melody song';
+  const shareText = `${shareTitle}${sheetItem.artist ? ' — ' + sheetItem.artist : ''}`;
+  if(navigator.share){
+    try{
+      await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+    }catch(e){ /* user cancelled share sheet — no toast needed */ }
+  } else {
+    try{
+      await navigator.clipboard.writeText(shareUrl);
+      toast('Link copied to clipboard');
+    }catch(e){
+      toast('Could not copy link');
+    }
+  }
+});
+async function downloadItemOffline(item){
+  const url = buildFileUrl(item.key);
+  const resp = await fetch(url, {cache:'no-store'});
+  if(!resp.ok) throw new Error('HTTP ' + resp.status);
+  const expectedLen = parseInt(resp.headers.get('content-length') || '0', 10);
+  const blob = await resp.blob();
+  if(expectedLen && blob.size !== expectedLen){
+    throw new Error(`Incomplete download (${blob.size} of ${expectedLen} bytes)`);
+  }
+  const cache = await caches.open(OFFLINE_CACHE);
+  await cache.put(url, new Response(blob, { headers: resp.headers, status: 200 }));
+}
 document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
   if(!sheetItem) return;
   closeSheets();
@@ -1250,15 +1325,7 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
   } else {
     toast('Downloading for offline...');
     try{
-      const resp = await fetch(url, {cache:'no-store'});
-      if(!resp.ok) throw new Error('HTTP ' + resp.status);
-      const expectedLen = parseInt(resp.headers.get('content-length') || '0', 10);
-      const blob = await resp.blob();
-      if(expectedLen && blob.size !== expectedLen){
-        throw new Error(`Incomplete download (${blob.size} of ${expectedLen} bytes) — weak connection, try again`);
-      }
-      const cache = await caches.open(OFFLINE_CACHE);
-      await cache.put(url, new Response(blob, { headers: resp.headers, status: 200 }));
+      await downloadItemOffline(sheetItem);
       toast('Downloaded ✓ available offline');
     }catch(e){
       toast('⚠️ Download failed: ' + e.message);
@@ -1465,10 +1532,11 @@ async function handleFiles(fileList, kind){
       statusEl.style.color = 'var(--green-bright)';
 
       const titleGuess = file.name.replace(/\.[^/.]+$/, "");
+      const tags = guessTagsFromFilename(file.name);
       const dbNode = realKind === 'video' ? 'videos' : 'songs';
       await push(ref(db, dbNode), {
-        title: titleGuess,
-        artist: "Unknown",
+        title: tags.title || titleGuess,
+        artist: tags.artist || "Unknown",
         key: objectKey,
         size: file.size,
         uploaded: Date.now()
@@ -1599,10 +1667,11 @@ async function drivePickerCallback(data){
       statusEl.style.color = 'var(--green-bright)';
 
       const titleGuess = file.name.replace(/\.[^/.]+$/, "");
+      const tags = guessTagsFromFilename(file.name);
       const dbNode = realKind === 'video' ? 'videos' : 'songs';
       await push(ref(db, dbNode), {
-        title: titleGuess,
-        artist: "Unknown",
+        title: tags.title || titleGuess,
+        artist: tags.artist || "Unknown",
         key: objectKey,
         size: file.size,
         uploaded: Date.now()
@@ -1630,11 +1699,68 @@ function buildQueueFromCurrentView(){
   return [...allSongsArr(), ...allVideosArr()];
 }
 
+// ---------------- RESUME PLAYBACK POSITION ----------------
+let resumeBannerDismissed = false;
+let pendingResumeSeek = null;
+function saveResumeState(){
+  const item = currentItem();
+  if(!item || !item.id) return;
+  const media = activeMedia();
+  if(!media || !media.duration || isNaN(media.currentTime) || media.currentTime < 3) return;
+  try{
+    localStorage.setItem('melody_resume', JSON.stringify({
+      id: item.id, type: item.type, key: item.key, title: item.title, artist: item.artist,
+      position: media.currentTime
+    }));
+  }catch(e){}
+}
+setInterval(saveResumeState, 5000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') saveResumeState(); });
+
+function checkResumeState(){
+  if(resumeBannerDismissed || currentQueue.length > 0) return;
+  try{
+    const saved = JSON.parse(localStorage.getItem('melody_resume') || 'null');
+    if(!saved || !saved.id || saved.position < 5) return;
+    const src = saved.type === 'video' ? videos : songs;
+    if(!src || !src[saved.id]) return;
+    document.getElementById('resumeTitle').textContent = (saved.title || 'Unknown') + ' · ' + fmtTime(saved.position);
+    document.getElementById('resumeBanner').style.display = 'flex';
+  }catch(e){}
+}
+function resumeFromSaved(saved){
+  const src = saved.type === 'video' ? videos : songs;
+  const data = src[saved.id];
+  if(!data) return;
+  const item = {...data, id: saved.id, type: saved.type};
+  currentQueue = [item];
+  currentIndex = 0;
+  shuffleBag = [];
+  pendingResumeSeek = saved.position;
+  document.getElementById('resumeBanner').style.display = 'none';
+  resumeBannerDismissed = true;
+  loadAndPlay();
+  openPlayerScreen();
+}
+document.getElementById('resumePlayBtn').addEventListener('click', ()=>{
+  try{
+    const saved = JSON.parse(localStorage.getItem('melody_resume') || 'null');
+    if(saved) resumeFromSaved(saved);
+  }catch(e){}
+});
+document.getElementById('resumeDismissBtn').addEventListener('click', ()=>{
+  resumeBannerDismissed = true;
+  document.getElementById('resumeBanner').style.display = 'none';
+});
+
 function playFromList(item){
+  document.getElementById('resumeBanner').style.display = 'none';
+  resumeBannerDismissed = true;
   const queue = buildQueueFromCurrentView();
   const idx = queue.findIndex(i=>i.key===item.key && i.type===item.type);
   currentQueue = queue;
   currentIndex = idx >=0 ? idx : 0;
+  shuffleBag = [];
   loadAndPlay();
   openPlayerScreen();
   renderContent();
@@ -1686,6 +1812,10 @@ async function loadAndPlay(){
       fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   }
+  if(pendingResumeSeek != null){
+    try{ activeMedia().currentTime = pendingResumeSeek; }catch(e){}
+    pendingResumeSeek = null;
+  }
   if(errMsg) toast('⚠️ ' + errMsg);
   updatePlayIcons(true);
   showMiniPlayer();
@@ -1700,11 +1830,24 @@ function updateMediaSession(item){
       title: item.title || item.key,
       artist: item.artist || 'Unknown',
       album: 'Melody',
+      artwork: [
+        { src: 'https://melody.sramesh.in/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'https://melody.sramesh.in/icon-512.png', sizes: '512x512', type: 'image/png' }
+      ]
     });
     navigator.mediaSession.setActionHandler('play', ()=>{ activeMedia().play(); });
     navigator.mediaSession.setActionHandler('pause', ()=>{ activeMedia().pause(); });
     navigator.mediaSession.setActionHandler('previoustrack', playPrev);
     navigator.mediaSession.setActionHandler('nexttrack', ()=>playNext(true));
+    try{
+      navigator.mediaSession.setActionHandler('seekbackward', (details)=>{
+        const m = activeMedia(); m.currentTime = Math.max(0, m.currentTime - (details.seekOffset || 10));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details)=>{
+        const m = activeMedia(); m.currentTime = Math.min(m.duration||0, m.currentTime + (details.seekOffset || 10));
+      });
+    }catch(e){}
+    navigator.mediaSession.playbackState = 'playing';
   }catch(e){}
 }
 
@@ -1753,15 +1896,35 @@ function updatePlayIcons(playing){
 
 function togglePlay(){
   const m = activeMedia();
-  if(m.paused){ m.play(); updatePlayIcons(true); } else { m.pause(); updatePlayIcons(false); }
+  if(m.paused){
+    m.play(); updatePlayIcons(true);
+    if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  } else {
+    m.pause(); updatePlayIcons(false);
+    if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  }
 }
 document.getElementById('playToggleBtn').addEventListener('click', togglePlay);
 document.getElementById('miniPlayBtn').addEventListener('click', (e)=>{ e.stopPropagation(); togglePlay(); });
 
+function refillShuffleBag(excludeIndex){
+  shuffleBag = currentQueue.map((_, i) => i).filter(i => i !== excludeIndex);
+  for(let i = shuffleBag.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffleBag[i], shuffleBag[j]] = [shuffleBag[j], shuffleBag[i]];
+  }
+}
 function playNext(manual){
   if(currentQueue.length===0) return;
   if(isShuffle){
-    currentIndex = Math.floor(Math.random()*currentQueue.length);
+    if(currentQueue.length === 1){ currentIndex = 0; }
+    else {
+      if(shuffleBag.length === 0){
+        if(repeatMode === 0 && !manual) return; // reached end of shuffled queue, no repeat
+        refillShuffleBag(currentIndex);
+      }
+      currentIndex = shuffleBag.shift();
+    }
   } else {
     currentIndex++;
     if(currentIndex >= currentQueue.length){
@@ -1782,6 +1945,7 @@ document.getElementById('miniNextBtn').addEventListener('click', (e)=>{ e.stopPr
 
 document.getElementById('shuffleBtn').addEventListener('click', function(){
   isShuffle = !isShuffle;
+  shuffleBag = [];
   this.classList.toggle('active-toggle', isShuffle);
   toast(isShuffle ? 'Shuffle on' : 'Shuffle off');
 });
@@ -1820,6 +1984,7 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
   });
   media.addEventListener('ended', ()=>{
     if(media !== activeMedia()) return;
+    try{ localStorage.removeItem('melody_resume'); }catch(e){}
     if(repeatMode === 2){ media.currentTime=0; media.play(); return; }
     playNext(false);
   });
