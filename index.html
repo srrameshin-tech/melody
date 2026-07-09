@@ -570,6 +570,7 @@ const db = getDatabase(fbApp);
 const WORKER_URL = "https://melody-r2-worker.srezycard.workers.dev";
 const AUTH_SECRET = "melody-secret-2026";
 const DEFAULT_PIN = "1973";
+const OFFLINE_CACHE = 'melody-offline-media';
 
 // ---------------- THEME ----------------
 function applyTheme(theme){
@@ -1115,7 +1116,6 @@ function openPlaylistView(pid, pl){
 
 // ---------------- ITEM SHEET (rename/delete/fav/playlist) ----------------
 let sheetItem = null;
-const OFFLINE_CACHE = 'melody-offline-media';
 async function isCached(url){
   if(!('caches' in window)) return false;
   try{
