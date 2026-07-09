@@ -908,19 +908,6 @@ function renderSongRow(item){
     playFromList(item);
   });
   row.addEventListener('contextmenu', (e)=>{ e.preventDefault(); });
-  let pressTimer;
-  row.addEventListener('touchstart', ()=>{
-    pressTimer = setTimeout(()=>{
-      if(!selectMode){
-        selectMode = true;
-        selectedItems.add(selId);
-        updateBulkBar();
-        renderContent();
-      }
-    }, 650);
-  });
-  row.addEventListener('touchend', ()=> clearTimeout(pressTimer));
-  row.addEventListener('touchmove', ()=> clearTimeout(pressTimer));
   return row;
 }
 
