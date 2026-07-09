@@ -1263,12 +1263,18 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
   } else {
     toast('Downloading for offline...');
     try{
-      const cache = await caches.open(OFFLINE_CACHE);
       const resp = await fetch(url, {cache:'no-store'});
-      await cache.put(url, resp);
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const expectedLen = parseInt(resp.headers.get('content-length') || '0', 10);
+      const blob = await resp.blob();
+      if(expectedLen && blob.size !== expectedLen){
+        throw new Error(`Incomplete download (${blob.size} of ${expectedLen} bytes) — weak connection, try again`);
+      }
+      const cache = await caches.open(OFFLINE_CACHE);
+      await cache.put(url, new Response(blob, { headers: resp.headers, status: 200 }));
       toast('Downloaded ✓ available offline');
     }catch(e){
-      toast('Download failed: ' + e.message);
+      toast('⚠️ Download failed: ' + e.message);
     }
   }
   refreshOfflineCache();
