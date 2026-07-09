@@ -652,7 +652,7 @@ function guessTagsFromFilename(filename){
   let base = filename.replace(/\.[^/.]+$/, "");
   base = base.replace(/[_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   const sepMatch = base.split(/\s+-\s+/);
-  if(sepMatch.length >= 2){
+  if(sepMatch.length >= 2 && !/^\d+$/.test(sepMatch[0].trim())){
     return { artist: sepMatch[0].trim(), title: sepMatch.slice(1).join(' - ').trim() };
   }
   return { artist: '', title: base };
@@ -1768,6 +1768,18 @@ function playFromList(item){
 
 function currentItem(){ return currentQueue[currentIndex]; }
 
+function applyPendingSeekTo(media){
+  if(pendingResumeSeek == null) return;
+  const seek = pendingResumeSeek;
+  pendingResumeSeek = null;
+  const doSeek = () => { try{ media.currentTime = seek; }catch(e){} };
+  if(media.readyState >= 1){ // HAVE_METADATA or higher — duration/seekable already known
+    doSeek();
+  } else {
+    media.addEventListener('loadedmetadata', doSeek, { once: true });
+  }
+}
+
 async function loadAndPlay(){
   const item = currentItem();
   if(!item) return;
@@ -1798,6 +1810,7 @@ async function loadAndPlay(){
     audioVisual.style.display = 'none';
     videoVisual.volume = masterVolume;
     videoVisual.src = playUrl;
+    applyPendingSeekTo(videoVisual);
     try{
       await videoVisual.play();
       requestVideoFullscreen();
@@ -1807,14 +1820,11 @@ async function loadAndPlay(){
     audioVisual.style.display = 'flex';
     audioEl.src = playUrl;
     audioEl.volume = 0;
+    applyPendingSeekTo(audioEl);
     try{
       await audioEl.play();
       fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
-  }
-  if(pendingResumeSeek != null){
-    try{ activeMedia().currentTime = pendingResumeSeek; }catch(e){}
-    pendingResumeSeek = null;
   }
   if(errMsg) toast('⚠️ ' + errMsg);
   updatePlayIcons(true);
