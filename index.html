@@ -1807,6 +1807,7 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
 
 [audioEl, videoVisual].forEach(media=>{
   media.addEventListener('error', ()=>{
+    if(media !== activeMedia()) return; // ignore spurious errors from the element we intentionally cleared
     const err = media.error;
     let msg = 'Media error';
     if(err){
