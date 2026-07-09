@@ -315,12 +315,13 @@ input{font-family:inherit;}
     <div class="storage-track"><div class="storage-fill" id="storageFill"></div></div>
     <span class="storage-label" id="storageLabel">Checking storage…</span>
   </div>
+  <div id="libraryCountLabel" style="padding:0 20px 10px; color:var(--yellow); font-size:13px; font-weight:700;"></div>
   <div style="display:flex; align-items:center; gap:8px; padding:0 20px 16px;">
     <div class="tabs" id="mainTabs" style="padding:0; flex:1; min-width:0;">
-      <button class="tab active" data-tab="songs">🎵 Songs</button>
-      <button class="tab" data-tab="videos">🎬 Videos</button>
-      <button class="tab" data-tab="playlists">📁 Playlists</button>
-      <button class="tab" data-tab="favorites">⭐ Favorites</button>
+      <button class="tab active" data-tab="songs">🎵 Songs <span id="songsCount" style="opacity:.6; font-size:11px;"></span></button>
+      <button class="tab" data-tab="videos">🎬 Videos <span id="videosCount" style="opacity:.6; font-size:11px;"></span></button>
+      <button class="tab" data-tab="playlists">📁 Playlists <span id="playlistsCount" style="opacity:.6; font-size:11px;"></span></button>
+      <button class="tab" data-tab="favorites">⭐ Favorites <span id="favoritesCount" style="opacity:.6; font-size:11px;"></span></button>
       <button class="tab" data-tab="recent">🕒 Recent</button>
     </div>
     <button class="filter-btn" id="openFilterBtn">🎚</button>
@@ -843,10 +844,24 @@ function matchesFilters(item){
   return true;
 }
 
+function updateLibraryCounts(){
+  const songCount = Object.keys(songs).length;
+  const videoCount = Object.keys(videos).length;
+  const playlistCount = Object.keys(playlists).length;
+  const favCount = Object.keys(favorites).length;
+  const label = document.getElementById('libraryCountLabel');
+  if(label) label.textContent = `🎵 ${songCount} Songs   🎬 ${videoCount} Videos   📁 ${playlistCount} Playlists`;
+  const sc = document.getElementById('songsCount'); if(sc) sc.textContent = songCount ? `(${songCount})` : '';
+  const vc = document.getElementById('videosCount'); if(vc) vc.textContent = videoCount ? `(${videoCount})` : '';
+  const pc = document.getElementById('playlistsCount'); if(pc) pc.textContent = playlistCount ? `(${playlistCount})` : '';
+  const fc = document.getElementById('favoritesCount'); if(fc) fc.textContent = favCount ? `(${favCount})` : '';
+}
+
 function renderContent(){
   const el = document.getElementById('content');
   const q = document.getElementById('searchInput').value.trim();
   el.innerHTML = "";
+  updateLibraryCounts();
 
   if(currentTab === 'songs'){
     const list = allSongsArr().filter(i=>matchesSearch(i,q)).filter(matchesFilters);
