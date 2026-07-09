@@ -750,8 +750,8 @@ async function refreshStorageUsage(){
 }
 
 // ---------------- FIREBASE SYNC ----------------
-onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
-onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
+onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); });
+onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); });
 onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
 
 // Self-healing: remove playlist item entries that point to songs/videos
