@@ -567,6 +567,7 @@ input{font-family:inherit;}
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDufR0ExIBjNBmT578D-MIreUD5_1lRESI",
@@ -579,6 +580,15 @@ const firebaseConfig = {
 };
 const fbApp = initializeApp(firebaseConfig);
 const db = getDatabase(fbApp);
+const auth = getAuth(fbApp);
+
+// Sign in anonymously so Firebase rules can require auth != null instead
+// of being wide open to anyone who has the database URL.
+try {
+  await signInAnonymously(auth);
+} catch (e) {
+  console.error("Melody: anonymous sign-in failed", e);
+}
 
 const WORKER_URL = "https://melody-r2-worker.srezycard.workers.dev";
 const AUTH_SECRET = "melody-secret-2026";
