@@ -2104,6 +2104,17 @@ if ('serviceWorker' in navigator) {
     })).catch(()=>{});
   }
 }
+
+// Ask the browser to mark our storage as "persistent" so offline
+// downloads (OFFLINE_CACHE) don't get silently evicted when the
+// device is low on storage. Without this, browsers are allowed to
+// clear site data for infrequently-used sites under storage pressure.
+if ('storage' in navigator && 'persist' in navigator.storage) {
+  navigator.storage.persist().then(granted => {
+    console.log('Melody: persistent storage', granted ? 'granted' : 'not granted');
+  }).catch(()=>{});
+}
+
 </script>
 </body>
 </html>
