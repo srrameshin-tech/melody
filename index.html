@@ -593,6 +593,11 @@ try {
 const WORKER_URL = "https://melody-r2-worker.srezycard.workers.dev";
 const AUTH_SECRET = "melody-secret-2026";
 const DEFAULT_PIN = "1973";
+async function sha256Hex(str){
+  const enc = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 const OFFLINE_CACHE = 'melody-offline-media';
 
 // ---------------- THEME ----------------
@@ -708,8 +713,9 @@ document.getElementById('keypad').addEventListener('click', (e)=>{
   pinBuffer += k;
   renderPinDots();
   if(pinBuffer.length === 4){
-    setTimeout(()=>{
-      const match = Object.entries(usersData).find(([id,u]) => u.pin === pinBuffer);
+    setTimeout(async ()=>{
+      const enteredHash = await sha256Hex(pinBuffer);
+      const match = Object.entries(usersData).find(([id,u]) => (u.pinHash && u.pinHash === enteredHash) || (u.pin && u.pin === pinBuffer));
       if(match){
         currentUser = { id: match[0], name: match[1].name, role: match[1].role };
         sessionStorage.setItem('melody_user', JSON.stringify(currentUser));
@@ -810,12 +816,27 @@ async function autoCleanupPlaylists(){
 }
 onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
-onValue(ref(db, 'users'), snap => { usersData = snap.val() || {}; renderUserList(); });
+onValue(ref(db, 'users'), snap => { usersData = snap.val() || {}; renderUserList(); migrateLegacyPins(); });
+
+async function migrateLegacyPins(){
+  const updates = {};
+  for(const [id,u] of Object.entries(usersData)){
+    if(u.pin && !u.pinHash){
+      const hash = await sha256Hex(u.pin);
+      updates['users/'+id+'/pinHash'] = hash;
+      updates['users/'+id+'/pin'] = null;
+    }
+  }
+  if(Object.keys(updates).length){
+    try{ await update(ref(db), updates); }catch(e){ console.error('PIN migration failed', e); }
+  }
+}
 
 (async function seedAdminIfNeeded(){
   const snap = await get(ref(db, 'users'));
   if(!snap.exists()){
-    await push(ref(db, 'users'), { name: 'Admin', pin: DEFAULT_PIN, role: 'admin' });
+    const hash = await sha256Hex(DEFAULT_PIN);
+    await push(ref(db, 'users'), { name: 'Admin', pinHash: hash, role: 'admin' });
   }
 })();
 
@@ -1268,7 +1289,8 @@ function openUserForm(id, u){
   editingUserId = id || null;
   document.getElementById('userFormTitle').textContent = id ? 'Edit Person' : 'Add Person';
   document.getElementById('userNameInput').value = u ? u.name : '';
-  document.getElementById('userPinInput').value = u ? u.pin : '';
+  document.getElementById('userPinInput').value = '';
+  document.getElementById('userPinInput').placeholder = id ? 'Leave blank to keep current PIN' : '4-digit PIN';
   document.getElementById('userRoleInput').value = u ? u.role : 'member';
   document.getElementById('deleteUserBtn').style.display = id ? 'block' : 'none';
   closeSheets();
@@ -1280,13 +1302,23 @@ document.getElementById('saveUserBtn').addEventListener('click', async ()=>{
   const pin = document.getElementById('userPinInput').value.trim();
   const role = document.getElementById('userRoleInput').value;
   if(!name){ toast('Enter a name'); return; }
-  if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits'); return; }
-  const dupe = Object.entries(usersData).find(([id,u]) => u.pin === pin && id !== editingUserId);
-  if(dupe){ toast('That PIN is already used by ' + dupe[1].name); return; }
+
+  let pinHash = null;
+  if(pin){
+    if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits'); return; }
+    pinHash = await sha256Hex(pin);
+    const dupe = Object.entries(usersData).find(([id,u]) => u.pinHash === pinHash && id !== editingUserId);
+    if(dupe){ toast('That PIN is already used by ' + dupe[1].name); return; }
+  } else if(!editingUserId){
+    toast('Enter a 4-digit PIN'); return;
+  }
+
   if(editingUserId){
-    await update(ref(db, 'users/' + editingUserId), { name, pin, role });
+    const payload = { name, role };
+    if(pinHash) payload.pinHash = pinHash;
+    await update(ref(db, 'users/' + editingUserId), payload);
   } else {
-    await push(ref(db, 'users'), { name, pin, role });
+    await push(ref(db, 'users'), { name, pinHash, role });
   }
   closeSheets();
   toast('Saved');
