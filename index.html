@@ -568,6 +568,7 @@ input{font-family:inherit;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDufR0ExIBjNBmT578D-MIreUD5_1lRESI",
@@ -579,6 +580,14 @@ const firebaseConfig = {
   appId: "1:433652118874:web:590f01f3b6a61ef1a8af63"
 };
 const fbApp = initializeApp(firebaseConfig);
+
+// App Check: proves requests come from this real app, not a script/curl
+// using the exposed firebaseConfig. Must init before any DB/Auth calls.
+initializeAppCheck(fbApp, {
+  provider: new ReCaptchaV3Provider("6Ld-YU0tAAAAAFIKnWZGBAFU7vFI4FqMZSoeNqrm"),
+  isTokenAutoRefreshEnabled: true
+});
+
 const db = getDatabase(fbApp);
 const auth = getAuth(fbApp);
 
