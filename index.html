@@ -687,6 +687,8 @@ function guessTagsFromFilename(filename){
 
 // ---------------- OFFLINE DOWNLOAD (Cache Storage API) ----------------
 const offlineKeysCache = new Set();
+let offlineIntent = {}; // keyFor(item) -> true, persisted in Firebase so we can auto-restore if browser cache gets wiped
+let autoRestoreRunning = false;
 async function refreshOfflineCache(){
   offlineKeysCache.clear();
   if('caches' in window){
@@ -697,7 +699,32 @@ async function refreshOfflineCache(){
     }catch(e){}
   }
   renderContent();
+  maybeAutoRestoreOffline();
 }
+async function maybeAutoRestoreOffline(){
+  if(autoRestoreRunning || !navigator.onLine) return;
+  const all = [...allSongsArr(), ...allVideosArr()];
+  const missing = Object.keys(offlineIntent).filter(k=>{
+    const item = all.find(i=>keyFor(i)===k);
+    return item && !offlineKeysCache.has(buildFileUrl(item.key));
+  });
+  if(missing.length === 0) return;
+  autoRestoreRunning = true;
+  toast(`Offline downloads restore ஆகுது (${missing.length})...`);
+  let restored = 0;
+  for(const k of missing){
+    const item = all.find(i=>keyFor(i)===k);
+    if(!item) continue;
+    try{ await downloadItemOffline(item); restored++; }catch(e){}
+  }
+  autoRestoreRunning = false;
+  if(restored > 0){
+    toast(`${restored} offline download(s) restore ஆச்சு ✓`);
+    refreshOfflineCache();
+  }
+}
+onValue(ref(db, 'offlineIntent'), snap => { offlineIntent = snap.val() || {}; maybeAutoRestoreOffline(); });
+window.addEventListener('online', maybeAutoRestoreOffline);
 
 // ---------------- LOGIN ----------------
 let pinBuffer = "";
@@ -1063,8 +1090,9 @@ document.getElementById('bulkDownloadBtn').addEventListener('click', async ()=>{
   for(const item of items){
     try{
       const url = buildFileUrl(item.key);
-      if(await isCached(url)){ done++; continue; }
+      if(await isCached(url)){ await set(ref(db, 'offlineIntent/' + keyFor(item)), true); done++; continue; }
       await downloadItemOffline(item);
+      await set(ref(db, 'offlineIntent/' + keyFor(item)), true);
       done++;
     }catch(e){ failed++; }
   }
@@ -1099,6 +1127,7 @@ async function findAndCleanDuplicates(){
     const node = item.type === 'video' ? 'videos' : 'songs';
     await remove(ref(db, node + '/' + item.id));
     await remove(ref(db, 'favorites/' + keyFor(item)));
+    await remove(ref(db, 'offlineIntent/' + keyFor(item)));
     await removeItemFromAllPlaylists(item);
     done++;
   }
@@ -1122,6 +1151,7 @@ document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
     const node = item.type === 'video' ? 'videos' : 'songs';
     await remove(ref(db, node + '/' + item.id));
     await remove(ref(db, 'favorites/' + keyFor(item)));
+    await remove(ref(db, 'offlineIntent/' + keyFor(item)));
     await removeItemFromAllPlaylists(item);
   }
   selectMode = false;
@@ -1471,11 +1501,13 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
   if(cached){
     const cache = await caches.open(OFFLINE_CACHE);
     await cache.delete(url);
+    await remove(ref(db, 'offlineIntent/' + keyFor(sheetItem)));
     toast('Removed offline download');
   } else {
     toast('Downloading for offline...');
     try{
       await downloadItemOffline(sheetItem);
+      await set(ref(db, 'offlineIntent/' + keyFor(sheetItem)), true);
       toast('Downloaded ✓ available offline');
     }catch(e){
       toast('⚠️ Download failed: ' + e.message);
@@ -1523,6 +1555,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
   await remove(ref(db, node + '/' + sheetItem.id));
   await remove(ref(db, 'favorites/' + keyFor(sheetItem)));
+  await remove(ref(db, 'offlineIntent/' + keyFor(sheetItem)));
   await removeItemFromAllPlaylists(sheetItem);
   if('caches' in window){
     try{ const cache = await caches.open(OFFLINE_CACHE); await cache.delete(buildFileUrl(sheetItem.key)); }catch(e){}
