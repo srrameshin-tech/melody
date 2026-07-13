@@ -1997,6 +1997,7 @@ async function loadAndPlay(){
 
   let errMsg = '';
   let playUrl = url;
+  let playSucceeded = false;
   const cachedOffline = await isCached(url);
   if(cachedOffline){
     try{
@@ -2017,6 +2018,7 @@ async function loadAndPlay(){
     applyPendingSeekTo(videoVisual);
     try{
       await videoVisual.play();
+      playSucceeded = true;
       requestVideoFullscreen();
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   } else {
@@ -2027,11 +2029,29 @@ async function loadAndPlay(){
     applyPendingSeekTo(audioEl);
     try{
       await audioEl.play();
+      playSucceeded = true;
       fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   }
-  if(errMsg) toast('⚠️ ' + errMsg);
-  updatePlayIcons(true);
+  if(!playSucceeded){
+    // Retry once after a short delay (handles transient buffering/network hiccups);
+    // if it still fails, skip forward so the queue doesn't get stuck silently.
+    await new Promise(r=>setTimeout(r, 700));
+    try{
+      const media = item.type === 'video' ? videoVisual : audioEl;
+      if(item.type !== 'video'){ media.volume = 0; }
+      await media.play();
+      playSucceeded = true;
+      if(item.type !== 'video'){ fadeAudioVolume(media, 0, masterVolume, CROSSFADE_SECONDS); }
+      else { requestVideoFullscreen(); }
+    }catch(e2){
+      toast('⚠️ ' + errMsg + ' — skipping to next song');
+      setTimeout(()=> playNext(false), 400);
+    }
+  } else if(errMsg){
+    toast('⚠️ ' + errMsg);
+  }
+  updatePlayIcons(playSucceeded);
   showMiniPlayer();
   updateMediaSession(item);
   trackRecentPlay(item);
@@ -2077,17 +2097,20 @@ function activeMedia(){
   return (item && item.type === 'video') ? videoVisual : audioEl;
 }
 
+let fadeTimerHandle = null;
 function fadeAudioVolume(media, from, to, seconds){
+  if(fadeTimerHandle){ clearInterval(fadeTimerHandle); fadeTimerHandle = null; }
   const steps = 20;
   const stepMs = (seconds*1000)/steps;
   let i = 0;
   media.volume = Math.max(0, Math.min(1, from));
-  const timer = setInterval(()=>{
+  fadeTimerHandle = setInterval(()=>{
     i++;
     const v = from + (to-from) * (i/steps);
     media.volume = Math.max(0, Math.min(1, v));
     if(i >= steps){
-      clearInterval(timer);
+      clearInterval(fadeTimerHandle);
+      fadeTimerHandle = null;
       media.volume = Math.max(0, Math.min(1, to));
     }
   }, stepMs);
