@@ -301,6 +301,7 @@ input{font-family:inherit;}
     <div style="display:flex; gap:8px;">
       <button class="icon-btn" id="themeToggleBtn">🌙</button>
       <button class="icon-btn" id="manageUsersBtn">👥</button>
+      <button class="icon-btn" id="dedupeBtn" title="Find & remove duplicates">🧹</button>
       <button class="icon-btn" id="selectModeBtn">☑️</button>
       <button class="icon-btn" id="lockBtn">🔒</button>
     </div>
@@ -767,6 +768,7 @@ function applyRoleUI(){
   document.getElementById('uploadFab').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('selectModeBtn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('manageUsersBtn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('dedupeBtn').style.display = isAdmin ? 'flex' : 'none';
 }
 
 if(sessionStorage.getItem('melody_unlocked') === '1'){
@@ -1041,6 +1043,42 @@ document.getElementById('bulkDownloadBtn').addEventListener('click', async ()=>{
   refreshOfflineCache();
   toast(failed ? `Downloaded ${done}, failed ${failed}` : `Downloaded ${done} item(s) ✓ available offline`);
 });
+function normSongKey(item){
+  return (item.title||'').trim().toLowerCase() + '|' + (item.artist||'').trim().toLowerCase();
+}
+async function findAndCleanDuplicates(){
+  if(!isAdminUser()){ toast('Only Admin can do this'); return; }
+  const groups = {};
+  [...allSongsArr(), ...allVideosArr()].forEach(item=>{
+    const norm = normSongKey(item);
+    if(!norm.trim().replace('|','')) return; // skip items with no title/artist at all
+    (groups[norm] = groups[norm] || []).push(item);
+  });
+  const dupes = [];
+  Object.values(groups).forEach(group=>{
+    if(group.length > 1){
+      group.sort((a,b)=> (a.uploaded||0)-(b.uploaded||0) || a.id.localeCompare(b.id));
+      dupes.push(...group.slice(1)); // keep earliest, mark rest as duplicates
+    }
+  });
+  if(dupes.length === 0){ toast('No duplicates found ✓'); return; }
+  const names = dupes.slice(0,5).map(d=>d.title||d.key).join(', ');
+  const more = dupes.length > 5 ? ` +${dupes.length-5} more` : '';
+  if(!confirm(`${dupes.length} duplicate item(s) found (keeping earliest copy of each):\n${names}${more}\n\nDelete the extra copies?`)) return;
+  let done = 0;
+  for(const item of dupes){
+    try{ await fetch(buildFileUrl(item.key), { method:'DELETE', headers:{'Authorization':'Bearer '+AUTH_SECRET} }); }catch(e){}
+    const node = item.type === 'video' ? 'videos' : 'songs';
+    await remove(ref(db, node + '/' + item.id));
+    await remove(ref(db, 'favorites/' + keyFor(item)));
+    await removeItemFromAllPlaylists(item);
+    done++;
+  }
+  toast(`Removed ${done} duplicate(s) ✓`);
+  refreshStorageUsage();
+}
+document.getElementById('dedupeBtn').addEventListener('click', findAndCleanDuplicates);
+
 document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
   if(!isAdminUser()){ toast('Only Admin can delete'); return; }
   if(selectedItems.size === 0) return;
