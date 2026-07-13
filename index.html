@@ -867,7 +867,8 @@ document.getElementById('searchInput').addEventListener('input', renderContent);
 
 // ---------------- RENDER CONTENT ----------------
 function allSongsArr(){
-  return Object.entries(songs).map(([id,v])=>({...v, id, type:'audio'}));
+  return Object.entries(songs).map(([id,v])=>({...v, id, type:'audio'}))
+    .sort((a,b)=> (a.order ?? Infinity) - (b.order ?? Infinity) || a.id.localeCompare(b.id));
 }
 function allVideosArr(){
   return Object.entries(videos).map(([id,v])=>({...v, id, type:'video'}));
@@ -905,7 +906,8 @@ function renderContent(){
 
   if(currentTab === 'songs'){
     const list = allSongsArr().filter(i=>matchesSearch(i,q)).filter(matchesFilters);
-    el.appendChild(renderList(list, "🎵", "No songs yet", "Tap the + button to upload your MP3 songs"));
+    const sortable = !q && !filterSinger && !filterMood && !filterYear && !selectMode;
+    el.appendChild(renderList(list, "🎵", "No songs yet", "Tap the + button to upload your MP3 songs", sortable));
   } else if(currentTab === 'videos'){
     const list = allVideosArr().filter(i=>matchesSearch(i,q)).filter(matchesFilters);
     el.appendChild(renderList(list, "🎬", "No videos yet", "Tap the + button to upload your video songs"));
@@ -932,17 +934,17 @@ function renderContent(){
   }
 }
 
-function renderList(list, icon, emptyTitle, emptyMsg){
+function renderList(list, icon, emptyTitle, emptyMsg, sortable){
   const wrap = document.createElement('div');
   if(list.length === 0){
     wrap.innerHTML = `<div class="empty-state"><div class="big-icon">${icon}</div><h3>${emptyTitle}</h3><p>${emptyMsg}</p></div>`;
     return wrap;
   }
-  list.forEach(item => wrap.appendChild(renderSongRow(item)));
+  list.forEach((item,i) => wrap.appendChild(renderSongRow(item, sortable, i===0, i===list.length-1)));
   return wrap;
 }
 
-function renderSongRow(item){
+function renderSongRow(item, sortable, isFirst, isLast){
   const row = document.createElement('div');
   const isPlaying = currentIndex >=0 && currentQueue[currentIndex] && currentQueue[currentIndex].key===item.key && currentQueue[currentIndex].type===item.type;
   row.className = 'song-row' + (isPlaying ? ' playing' : '');
@@ -964,6 +966,10 @@ function renderSongRow(item){
       <div class="song-title">${escapeHtml(item.title || item.key)}</div>
       <div class="song-meta"><span>${escapeHtml(item.artist||'Unknown')}</span>${isOffline ? ' <span style="color:var(--green-bright);">⬇ Offline</span>' : ''}</div>
     </div>
+    ${sortable ? `<div style="display:flex; flex-direction:column; gap:2px;">
+      <button data-action="up" style="color:${isFirst?'#444':'var(--white)'}; font-size:16px; padding:2px 6px;" ${isFirst?'disabled':''}>▲</button>
+      <button data-action="down" style="color:${isLast?'#444':'var(--white)'}; font-size:16px; padding:2px 6px;" ${isLast?'disabled':''}>▼</button>
+    </div>` : ''}
     <button class="fav-btn ${isFav?'active':''}" data-action="fav">⭐</button>
     <button class="more-btn" data-action="more">⋯</button>
   `;
@@ -976,6 +982,8 @@ function renderSongRow(item){
       return;
     }
     const action = e.target.closest('[data-action]');
+    if(action && action.dataset.action === 'up'){ moveSongItem(item.id, 'up'); return; }
+    if(action && action.dataset.action === 'down'){ moveSongItem(item.id, 'down'); return; }
     if(action && action.dataset.action === 'fav'){
       toggleFavorite(item);
       return;
@@ -1129,6 +1137,16 @@ async function movePlaylistItem(pid, entryId, direction){
   [entries[idx], entries[swapIdx]] = [entries[swapIdx], entries[idx]];
   const updates = {};
   entries.forEach((e,i)=>{ updates['playlists/'+pid+'/items/'+e.entryId+'/order'] = i; });
+  await update(ref(db), updates);
+}
+async function moveSongItem(id, direction){
+  const list = allSongsArr();
+  const idx = list.findIndex(s=>s.id===id);
+  const swapIdx = direction === 'up' ? idx-1 : idx+1;
+  if(idx<0 || swapIdx<0 || swapIdx>=list.length) return;
+  [list[idx], list[swapIdx]] = [list[swapIdx], list[idx]];
+  const updates = {};
+  list.forEach((s,i)=>{ updates['songs/'+s.id+'/order'] = i; });
   await update(ref(db), updates);
 }
 function renderPlaylistRow(item, entryId, pid, isFirst, isLast){
