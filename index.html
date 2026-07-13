@@ -1576,10 +1576,17 @@ function detectRealKind(file){
   return null; // unknown, fall back to what the user picked
 }
 
+function findDuplicateFile(file, realKind){
+  const list = realKind === 'video' ? videos : songs;
+  const suffix = '_' + sanitizeFilename(file.name).toLowerCase();
+  return Object.values(list).find(v => v.key && v.size === file.size && v.key.toLowerCase().endsWith(suffix));
+}
+
 async function handleFiles(fileList, kind){
   const files = Array.from(fileList);
   if(files.length===0) return;
   const wrap = document.getElementById('uploadProgressWrap');
+  let skippedCount = 0;
   for(const file of files){
     const rowId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
     const row = document.createElement('div');
@@ -1592,6 +1599,15 @@ async function handleFiles(fileList, kind){
 
     const realKind = detectRealKind(file) || kind;
     const folder = realKind === 'video' ? 'videos' : 'songs';
+
+    const dupe = findDuplicateFile(file, realKind);
+    if(dupe){
+      statusEl.textContent = '⚠️ Already uploaded – skipped';
+      statusEl.style.color = 'var(--yellow)';
+      skippedCount++;
+      continue;
+    }
+
     const objectKey = folder + '/' + Date.now() + '_' + sanitizeFilename(file.name);
 
     try {
@@ -1630,7 +1646,11 @@ async function handleFiles(fileList, kind){
       statusEl.style.color = '#FF5C5C';
     }
   }
-  toast('Upload complete');
+  if(skippedCount > 0){
+    toast(`Upload complete — ${skippedCount} duplicate${skippedCount>1?'s':''} skipped`);
+  } else {
+    toast('Upload complete');
+  }
   refreshStorageUsage();
 }
 
