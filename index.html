@@ -643,6 +643,7 @@ let selectedItems = new Set(); // "type_id"
 let currentTab = "songs";
 let currentPlaylistId = null;
 let currentQueue = [];   // array of {type,key,title,artist}
+let queueSourceTab = null;
 let currentIndex = -1;
 let isShuffle = false;
 let shuffleBag = []; // remaining indices to play in shuffle mode (no-repeat until bag exhausted)
@@ -820,7 +821,17 @@ async function refreshStorageUsage(){
 }
 
 // ---------------- FIREBASE SYNC ----------------
-onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); });
+function resyncQueueOrder(){
+  if(queueSourceTab !== 'songs' || currentQueue.length === 0) return;
+  const curItem = currentItem();
+  const freshQueue = allSongsArr();
+  currentQueue = freshQueue;
+  if(curItem){
+    const newIdx = freshQueue.findIndex(i=>i.id===curItem.id && i.type===curItem.type);
+    if(newIdx >= 0) currentIndex = newIdx;
+  }
+}
+onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); resyncQueueOrder(); });
 onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); });
 onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
 
@@ -1918,6 +1929,7 @@ function playFromList(item){
   const queue = buildQueueFromCurrentView();
   const idx = queue.findIndex(i=>i.key===item.key && i.type===item.type);
   currentQueue = queue;
+  queueSourceTab = currentTab;
   currentIndex = idx >=0 ? idx : 0;
   shuffleBag = [];
   loadAndPlay();
