@@ -745,6 +745,16 @@ document.getElementById('keypad').addEventListener('click', (e)=>{
     }, 120);
   }
 });
+document.addEventListener('keydown', (e)=>{
+  const loginScreen = document.getElementById('loginScreen');
+  if(!loginScreen || !loginScreen.classList.contains('active')) return;
+  if(e.key >= '0' && e.key <= '9'){
+    const btn = document.querySelector(`#keypad .key[data-k="${e.key}"]`);
+    if(btn) btn.click();
+  } else if(e.key === 'Backspace'){
+    document.getElementById('delKey')?.click();
+  }
+});
 
 function showApp(){
   document.getElementById('loginScreen').classList.remove('active');
