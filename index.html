@@ -91,7 +91,7 @@ input{font-family:inherit;}
 .keypad{display:grid; grid-template-columns:repeat(3,72px); gap:16px; justify-content:center;}
 .key{width:72px; height:72px; border-radius:50%; background:var(--black3); color:var(--white);
   font-size:26px; font-weight:600; display:flex; align-items:center; justify-content:center;
-  transition:.12s; border:1px solid var(--key-border);}
+  transition:.12s; border:1px solid var(--key-border); touch-action:manipulation; -webkit-user-select:none; user-select:none;}
 .key:active{background:var(--yellow); color:var(--ink); transform:scale(0.94);}
 .key.ghost{background:none; border:none;}
 
@@ -741,7 +741,7 @@ function shakeDots(){
     pinBuffer = "";
   }, 350);
 }
-document.getElementById('keypad').addEventListener('click', (e)=>{
+function handleKeypadTap(e){
   const btn = e.target.closest('.key');
   if(!btn) return;
   if(btn.id === 'delKey'){ pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
@@ -772,6 +772,17 @@ document.getElementById('keypad').addEventListener('click', (e)=>{
       }
     }, 120);
   }
+}
+let keypadTouched = false;
+document.getElementById('keypad').addEventListener('touchend', (e)=>{
+  keypadTouched = true;
+  e.preventDefault(); // respond instantly on touch-up, skip the delayed synthetic click
+  handleKeypadTap(e);
+  setTimeout(()=>{ keypadTouched = false; }, 400);
+});
+document.getElementById('keypad').addEventListener('click', (e)=>{
+  if(keypadTouched) return; // already handled via touchend, avoid double-entry
+  handleKeypadTap(e);
 });
 function digitFromKeyEvent(e){
   if(e.code && /^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
