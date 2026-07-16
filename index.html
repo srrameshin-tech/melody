@@ -1678,7 +1678,19 @@ function detectRealKind(file){
 function findDuplicateFile(file, realKind){
   const list = realKind === 'video' ? videos : songs;
   const suffix = '_' + sanitizeFilename(file.name).toLowerCase();
-  return Object.values(list).find(v => v.key && v.size === file.size && v.key.toLowerCase().endsWith(suffix));
+  // Exact match: same filename AND same file size -> certain duplicate (safe to auto-skip)
+  const exact = Object.values(list).find(v => v.key && v.size === file.size && v.key.toLowerCase().endsWith(suffix));
+  if(exact) return {item: exact, reason: 'exact'};
+  // Same filename but different size -> likely the same song re-encoded/different bitrate
+  const sameName = Object.values(list).find(v => v.key && v.key.toLowerCase().endsWith(suffix));
+  if(sameName) return {item: sameName, reason: 'filename'};
+  // Same guessed title+artist already in library, uploaded under a different filename
+  const tags = guessTagsFromFilename(file.name);
+  const titleGuess = file.name.replace(/\.[^/.]+$/, "");
+  const key = ((tags.title || titleGuess)||'').trim().toLowerCase() + '|' + ((tags.artist||'Unknown')||'').trim().toLowerCase();
+  const sameTitle = Object.values(list).find(v => (((v.title||'').trim().toLowerCase())+'|'+((v.artist||'Unknown').trim().toLowerCase())) === key);
+  if(sameTitle) return {item: sameTitle, reason: 'title'};
+  return null;
 }
 
 async function handleFiles(fileList, kind){
@@ -1701,10 +1713,21 @@ async function handleFiles(fileList, kind){
 
     const dupe = findDuplicateFile(file, realKind);
     if(dupe){
-      statusEl.textContent = '⚠️ Already uploaded – skipped';
-      statusEl.style.color = 'var(--yellow)';
-      skippedCount++;
-      continue;
+      if(dupe.reason === 'exact'){
+        statusEl.textContent = '⚠️ Already uploaded – skipped';
+        statusEl.style.color = 'var(--yellow)';
+        skippedCount++;
+        continue;
+      }
+      const reasonMsg = dupe.reason === 'filename'
+        ? `"${file.name}" already exists in your library with a different file size (maybe different quality). Upload anyway?`
+        : `A song titled "${dupe.item.title}" by "${dupe.item.artist}" already exists. Upload "${file.name}" anyway?`;
+      if(!confirm(reasonMsg)){
+        statusEl.textContent = '⚠️ Possible duplicate – skipped';
+        statusEl.style.color = 'var(--yellow)';
+        skippedCount++;
+        continue;
+      }
     }
 
     const objectKey = folder + '/' + Date.now() + '_' + sanitizeFilename(file.name);
