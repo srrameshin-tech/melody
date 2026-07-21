@@ -634,6 +634,7 @@ let currentUser = null; // {id, name, role}
 let selectMode = false;
 let masterVolume = 1;
 let fadeOutStarted = false;
+let currentBlobUrl = null; // tracks active offline-cache Blob URL so we can revoke the previous one and avoid memory buildup
 const CROSSFADE_SECONDS = 3;
 let filterSinger = null;
 let filterMood = null;
@@ -773,17 +774,7 @@ function handleKeypadTap(e){
     }, 120);
   }
 }
-let keypadTouched = false;
-document.getElementById('keypad').addEventListener('touchend', (e)=>{
-  keypadTouched = true;
-  e.preventDefault(); // respond instantly on touch-up, skip the delayed synthetic click
-  handleKeypadTap(e);
-  setTimeout(()=>{ keypadTouched = false; }, 400);
-});
-document.getElementById('keypad').addEventListener('click', (e)=>{
-  if(keypadTouched) return; // already handled via touchend, avoid double-entry
-  handleKeypadTap(e);
-});
+document.getElementById('keypad').addEventListener('click', handleKeypadTap);
 function digitFromKeyEvent(e){
   if(e.code && /^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
   if(e.code && /^Numpad[0-9]$/.test(e.code)) return e.code.slice(6);
@@ -2038,8 +2029,13 @@ async function loadAndPlay(){
       const cache = await caches.open(OFFLINE_CACHE);
       const cachedResp = await cache.match(url);
       const blob = await cachedResp.blob();
+      if(currentBlobUrl){ URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
       playUrl = URL.createObjectURL(blob);
+      currentBlobUrl = playUrl;
     }catch(e){ errMsg = 'Cache read failed: ' + e.message; }
+  } else if(currentBlobUrl){
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
   }
 
   fadeOutStarted = false;
@@ -2257,7 +2253,18 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
     if(media !== activeMedia()) return;
     try{ localStorage.removeItem('melody_resume'); }catch(e){}
     if(repeatMode === 2){ media.currentTime=0; media.play(); return; }
+    const idxBefore = currentIndex;
     playNext(false);
+    // Watchdog: if auto-advance silently failed to start playback (e.g. browser blocked it),
+    // retry once after a short delay so the queue doesn't get stuck requiring a manual tap.
+    setTimeout(()=>{
+      if(currentIndex !== idxBefore){
+        const m = activeMedia();
+        if(m && m.paused && currentQueue.length){
+          m.play().catch(()=>{});
+        }
+      }
+    }, 900);
   });
   media.addEventListener('play', ()=>{ if(media===activeMedia()) updatePlayIcons(true); });
   media.addEventListener('pause', ()=>{ if(media===activeMedia()) updatePlayIcons(false); });
