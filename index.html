@@ -2236,6 +2236,7 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
   });
   media.addEventListener('timeupdate', ()=>{
     if(media !== activeMedia()) return;
+    if(isSeeking) return; // don't fight with the drag preview
     const pct = media.duration ? (media.currentTime/media.duration)*100 : 0;
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('miniProgressFill').style.width = pct + '%';
@@ -2270,12 +2271,74 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
   media.addEventListener('pause', ()=>{ if(media===activeMedia()) updatePlayIcons(false); });
 });
 
-document.getElementById('progressTrack').addEventListener('click', (e)=>{
+function seekFromClientX(clientX){
   const m = activeMedia();
-  if(!m.duration) return;
-  const rect = e.currentTarget.getBoundingClientRect();
-  const pct = (e.clientX - rect.left)/rect.width;
-  m.currentTime = pct * m.duration;
+  if(!m.duration || !isFinite(m.duration)) return null;
+  const track = document.getElementById('progressTrack');
+  const rect = track.getBoundingClientRect();
+  let pct = (clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  return pct;
+}
+function setProgressPreview(pct){
+  document.getElementById('progressFill').style.width = (pct*100) + '%';
+  document.getElementById('miniProgressFill').style.width = (pct*100) + '%';
+  const m = activeMedia();
+  if(m.duration && isFinite(m.duration)){
+    document.getElementById('curTime').textContent = fmtTime(pct * m.duration);
+  }
+}
+let isSeeking = false;
+const progressTrackEl = document.getElementById('progressTrack');
+progressTrackEl.addEventListener('touchstart', (e)=>{
+  isSeeking = true;
+  const pct = seekFromClientX(e.touches[0].clientX);
+  if(pct!==null) setProgressPreview(pct);
+}, {passive:true});
+progressTrackEl.addEventListener('touchmove', (e)=>{
+  if(!isSeeking) return;
+  const pct = seekFromClientX(e.touches[0].clientX);
+  if(pct!==null) setProgressPreview(pct);
+}, {passive:true});
+progressTrackEl.addEventListener('touchend', (e)=>{
+  if(!isSeeking) return;
+  isSeeking = false;
+  const pct = seekFromClientX(e.changedTouches[0].clientX);
+  const m = activeMedia();
+  if(pct!==null && m.duration && isFinite(m.duration)){
+    m.currentTime = pct * m.duration;
+  }
+});
+progressTrackEl.addEventListener('mousedown', (e)=>{
+  isSeeking = true;
+  const pct = seekFromClientX(e.clientX);
+  if(pct!==null) setProgressPreview(pct);
+  const onMove = (ev)=>{
+    if(!isSeeking) return;
+    const p = seekFromClientX(ev.clientX);
+    if(p!==null) setProgressPreview(p);
+  };
+  const onUp = (ev)=>{
+    if(!isSeeking) return;
+    isSeeking = false;
+    const p = seekFromClientX(ev.clientX);
+    const m = activeMedia();
+    if(p!==null && m.duration && isFinite(m.duration)){
+      m.currentTime = p * m.duration;
+    }
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+progressTrackEl.addEventListener('click', (e)=>{
+  if(isSeeking) return; // already handled by touch/mouse drag sequence
+  const pct = seekFromClientX(e.clientX);
+  const m = activeMedia();
+  if(pct!==null && m.duration && isFinite(m.duration)){
+    m.currentTime = pct * m.duration;
+  }
 });
 
 function showMiniPlayer(){ document.getElementById('miniPlayer').classList.add('show'); }
