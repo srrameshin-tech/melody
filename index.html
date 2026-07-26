@@ -592,6 +592,46 @@ initializeAppCheck(fbApp, {
 const db = getDatabase(fbApp);
 const auth = getAuth(fbApp);
 
+// ---------------- AUTO CHECK: background error/crash logger ----------------
+// Captures every uncaught JS error and unhandled promise rejection anywhere in
+// the app, and pushes it to Firebase errorLogs. On next app open, if it has
+// been 3+ days since the last review, admin gets a popup summarizing what
+// went wrong (with a Copy button) so it can be screenshotted/sent for a fix —
+// no manual testing needed to catch issues.
+let errorLogQueue = [];
+let errorLogFlushTimer = null;
+function logAppError(type, message, extra){
+  try{
+    const entry = {
+      type: type,
+      message: String(message || '').slice(0, 500),
+      extra: extra ? String(extra).slice(0, 800) : '',
+      time: Date.now(),
+      ua: navigator.userAgent.slice(0, 200),
+      page: location.pathname
+    };
+    errorLogQueue.push(entry);
+    if(errorLogFlushTimer) clearTimeout(errorLogFlushTimer);
+    errorLogFlushTimer = setTimeout(flushErrorLogQueue, 1500);
+  }catch(e){ /* never let the logger itself crash the app */ }
+}
+function flushErrorLogQueue(){
+  if(!errorLogQueue.length) return;
+  const batch = errorLogQueue.splice(0, errorLogQueue.length);
+  batch.forEach(entry=>{
+    push(ref(db, 'errorLogs'), entry).catch(()=>{}); // best-effort; never blocks the app
+  });
+}
+window.addEventListener('error', (e)=>{
+  logAppError('JS Error', e.message, (e.filename||'') + ':' + (e.lineno||'') + ' ' + (e.error && e.error.stack ? e.error.stack.slice(0,400) : ''));
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  const reason = e.reason;
+  logAppError('Unhandled Promise', reason && reason.message ? reason.message : String(reason), reason && reason.stack ? reason.stack.slice(0,400) : '');
+});
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushErrorLogQueue(); });
+
+
 // Sign in anonymously so Firebase rules can require auth != null instead
 // of being wide open to anyone who has the database URL.
 try {
@@ -830,6 +870,61 @@ function applyRoleUI(){
   document.getElementById('selectModeBtn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('manageUsersBtn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('dedupeBtn').style.display = isAdmin ? 'flex' : 'none';
+  if(isAdmin) runAutoCheckDigest();
+}
+
+// ---------------- AUTO CHECK: 3-day admin digest popup ----------------
+const AUTO_CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+async function runAutoCheckDigest(){
+  try{
+    const lastCheck = Number(localStorage.getItem('melody_lastErrorCheck') || 0);
+    if(Date.now() - lastCheck < AUTO_CHECK_INTERVAL_MS) return; // not due yet
+    const snap = await get(ref(db, 'errorLogs'));
+    const all = snap.val() || {};
+    const unresolved = Object.entries(all).filter(([id, e]) => !e.seen);
+    localStorage.setItem('melody_lastErrorCheck', String(Date.now()));
+    if(unresolved.length === 0) return;
+    showAutoCheckPopup(unresolved);
+  }catch(e){ console.warn('Auto Check digest failed:', e.message); }
+}
+function showAutoCheckPopup(entries){
+  // Group identical messages together with a count + first/last seen time
+  const groups = {};
+  entries.forEach(([id, e])=>{
+    const key = (e.type||'Error') + ': ' + (e.message||'');
+    if(!groups[key]) groups[key] = { count:0, first:e.time, last:e.time, extra:e.extra, ids:[] };
+    groups[key].count++;
+    groups[key].first = Math.min(groups[key].first, e.time);
+    groups[key].last = Math.max(groups[key].last, e.time);
+    groups[key].ids.push(id);
+  });
+  const lines = Object.entries(groups).map(([key, g])=>
+    `• ${key}\n   (${g.count}x, last: ${new Date(g.last).toLocaleString()})${g.extra ? '\n   ↳ '+g.extra : ''}`
+  );
+  const fullText = `Melody Auto Check — ${entries.length} issue(s) found in last 3 days:\n\n` + lines.join('\n\n');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="sheet" style="max-height:75vh;">
+      <div class="sheet-handle"></div>
+      <h3 style="margin:4px 0 12px; color:#FF5C5C;">⚠️ Auto Check — ${entries.length} issue(s) found</h3>
+      <pre id="autoCheckText" style="white-space:pre-wrap; font-family:inherit; font-size:13px; background:var(--black3); padding:12px; border-radius:12px; max-height:45vh; overflow-y:auto; margin:0 0 16px;">${fullText.replace(/</g,'&lt;')}</pre>
+      <div style="display:flex; gap:10px;">
+        <button id="autoCheckCopyBtn" class="sheet-row" style="flex:1; justify-content:center; background:var(--yellow); color:var(--ink); border-radius:12px; font-weight:700;">📋 Copy</button>
+        <button id="autoCheckCloseBtn" class="sheet-row" style="flex:1; justify-content:center; background:var(--black3); border-radius:12px; font-weight:700;">Mark reviewed & close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#autoCheckCopyBtn').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(fullText).then(()=> toast('Copied — paste it to Claude')).catch(()=> toast('Copy failed, select text manually'));
+  });
+  overlay.querySelector('#autoCheckCloseBtn').addEventListener('click', ()=>{
+    const allIds = Object.values(groups).flatMap(g=>g.ids);
+    allIds.forEach(id => update(ref(db, 'errorLogs/' + id), { seen: true }).catch(()=>{}));
+    overlay.remove();
+  });
 }
 
 if(sessionStorage.getItem('melody_unlocked') === '1'){
@@ -1527,12 +1622,14 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
       toast('Downloaded ✓ available offline');
     }catch(e){
       console.warn('Offline download failed, retrying once:', e.message);
+      logAppError('Download Retry', e.message, sheetItem && sheetItem.title);
       try{
         await downloadItemOffline(sheetItem);
         await set(ref(db, 'offlineIntent/' + keyFor(sheetItem)), true);
         toast('Downloaded ✓ available offline');
       }catch(e2){
         console.warn('Offline download retry also failed:', e2.message);
+        logAppError('Download Failed', e2.message, sheetItem && sheetItem.title);
         toast('Could not download right now — please try again');
       }
     }
@@ -2099,6 +2196,7 @@ async function loadAndPlay(){
     }catch(e2){
       consecutiveAutoSkips++;
       console.warn('Melody playback failed, auto-skip:', errMsg);
+      logAppError('Playback Failed', errMsg, item && (item.title||item.key));
       if(consecutiveAutoSkips <= MAX_CONSECUTIVE_AUTO_SKIPS){
         setTimeout(()=> playNext(false), 400);
       }
@@ -2107,6 +2205,7 @@ async function loadAndPlay(){
     }
   } else if(errMsg){
     console.warn('Melody playback warning:', errMsg);
+    logAppError('Playback Warning', errMsg, item && (item.title||item.key));
   }
   if(playSucceeded) consecutiveAutoSkips = 0;
   updatePlayIcons(playSucceeded);
@@ -2262,6 +2361,7 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
     }
     // Auto-skip forward silently — no error popup shown to the user.
     console.warn('Melody media error, auto-skip:', msg);
+    logAppError('Media Error', msg, currentItem() && (currentItem().title||currentItem().key));
     consecutiveAutoSkips++;
     if(consecutiveAutoSkips > MAX_CONSECUTIVE_AUTO_SKIPS){
       updatePlayIcons(false);
