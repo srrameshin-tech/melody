@@ -1514,7 +1514,15 @@ document.getElementById('itemDownloadRow').addEventListener('click', async ()=>{
       await set(ref(db, 'offlineIntent/' + keyFor(sheetItem)), true);
       toast('Downloaded ✓ available offline');
     }catch(e){
-      toast('⚠️ Download failed: ' + e.message);
+      console.warn('Offline download failed, retrying once:', e.message);
+      try{
+        await downloadItemOffline(sheetItem);
+        await set(ref(db, 'offlineIntent/' + keyFor(sheetItem)), true);
+        toast('Downloaded ✓ available offline');
+      }catch(e2){
+        console.warn('Offline download retry also failed:', e2.message);
+        toast('Could not download right now — please try again');
+      }
     }
   }
   refreshOfflineCache();
@@ -2078,15 +2086,15 @@ async function loadAndPlay(){
       else { requestVideoFullscreen(); }
     }catch(e2){
       consecutiveAutoSkips++;
-      if(consecutiveAutoSkips > MAX_CONSECUTIVE_AUTO_SKIPS){
-        toast('⚠️ Several songs failed in a row — stopping auto-skip. Check connection/storage.');
-      } else {
-        toast('⚠️ ' + errMsg + ' — skipping to next song');
+      console.warn('Melody playback failed, auto-skip:', errMsg);
+      if(consecutiveAutoSkips <= MAX_CONSECUTIVE_AUTO_SKIPS){
         setTimeout(()=> playNext(false), 400);
       }
+      // If it keeps failing repeatedly we just stop quietly (icon shows paused) —
+      // no alarming error popup shown to the user.
     }
   } else if(errMsg){
-    toast('⚠️ ' + errMsg);
+    console.warn('Melody playback warning:', errMsg);
   }
   if(playSucceeded) consecutiveAutoSkips = 0;
   updatePlayIcons(playSucceeded);
@@ -2240,16 +2248,13 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
       const codes = {1:'Aborted',2:'Network error',3:'Cannot decode this file format',4:'File format not supported'};
       msg = codes[err.code] || ('Error code ' + err.code);
     }
-    // BUG FIX: previously this only showed a toast and never advanced the queue,
-    // so a single failed track (network hiccup / decode error) killed playback dead
-    // for the rest of the session. Now auto-skip forward, same as a failed play().
+    // Auto-skip forward silently — no error popup shown to the user.
+    console.warn('Melody media error, auto-skip:', msg);
     consecutiveAutoSkips++;
     if(consecutiveAutoSkips > MAX_CONSECUTIVE_AUTO_SKIPS){
-      toast('⚠️ Several songs failed in a row — stopping auto-skip. Check connection/storage.');
       updatePlayIcons(false);
       return;
     }
-    toast('⚠️ ' + msg + ' — skipping to next song');
     setTimeout(()=> playNext(false), 400);
   });
   media.addEventListener('timeupdate', ()=>{
