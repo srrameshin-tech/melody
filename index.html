@@ -776,7 +776,19 @@ function handleKeypadTap(e){
     }, 120);
   }
 }
-document.getElementById('keypad').addEventListener('click', handleKeypadTap);
+let keypadLastTouchTs = 0;
+function handleKeypadTouchEnd(e){
+  e.preventDefault(); // stop the slow trailing synthetic 'click' from firing (and don't zoom/select)
+  keypadLastTouchTs = Date.now();
+  handleKeypadTap(e);
+}
+document.getElementById('keypad').addEventListener('touchend', handleKeypadTouchEnd, {passive:false});
+document.getElementById('keypad').addEventListener('click', (e)=>{
+  // Skip if a touchend just handled this same tap (prevents double-entry on touch devices);
+  // this only matters for devices where the synthetic click still slips through.
+  if(Date.now() - keypadLastTouchTs < 500) return;
+  handleKeypadTap(e);
+});
 function digitFromKeyEvent(e){
   if(e.code && /^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
   if(e.code && /^Numpad[0-9]$/.test(e.code)) return e.code.slice(6);
