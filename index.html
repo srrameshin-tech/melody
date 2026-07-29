@@ -273,8 +273,8 @@ input{font-family:inherit;}
   window.gapiReady = false;
   window.gisReady = false;
 </script>
-<script async defer src="https://apis.google.com/js/api.js" onload="gapi.load('picker', ()=>{ window.gapiReady = true; })"></script>
-<script async defer src="https://accounts.google.com/gsi/client" onload="window.gisReady = true;"></script>
+<script async defer crossorigin="anonymous" src="https://apis.google.com/js/api.js" onload="gapi.load('picker', ()=>{ window.gapiReady = true; })"></script>
+<script async defer crossorigin="anonymous" src="https://accounts.google.com/gsi/client" onload="window.gisReady = true;"></script>
 </head>
 <body>
 
