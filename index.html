@@ -569,7 +569,6 @@ input{font-family:inherit;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDufR0ExIBjNBmT578D-MIreUD5_1lRESI",
@@ -582,12 +581,11 @@ const firebaseConfig = {
 };
 const fbApp = initializeApp(firebaseConfig);
 
-// App Check: proves requests come from this real app, not a script/curl
-// using the exposed firebaseConfig. Must init before any DB/Auth calls.
-initializeAppCheck(fbApp, {
-  provider: new ReCaptchaV3Provider("6Ld-YU0tAAAAAFIKnWZGBAFU7vFI4FqMZSoeNqrm"),
-  isTokenAutoRefreshEnabled: true
-});
+// App Check நீக்கப்பட்டது (4 ஆக 2026): reCAPTCHA key இந்த domain-க்கு
+// register ஆகல, அதனால அது எந்த பாதுகாப்பும் தரல — வெறும் பிழை மட்டும்
+// கொடுத்துட்டு இருந்தது. பாதுகாப்பு இப்போ Firebase rules-ல (auth != null).
+// சரியா செய்யணும்னா: reCAPTCHA console-ல melody.sramesh.in சேர்த்து,
+// அப்புறம் Firebase-ல App Check enforce பண்ணணும்.
 
 const db = getDatabase(fbApp);
 const auth = getAuth(fbApp);
@@ -974,8 +972,14 @@ async function runAutoCheckDigest(force){
 function showAutoCheckPopup(entries){
   // Group identical messages together with a count + first/last seen time
   const groups = {};
+  /* "[2026-08-04T16:57:25.753Z] ..." மாதிரி நேரம் message-க்குள்ள இருந்தா
+     ஒவ்வொண்ணும் தனித்தனியா தெரியும். group பண்ண முன்னாடி அதை நீக்கணும். */
+  const groupKey = m => String(m || '')
+    .replace(/\[\d{4}-\d{2}-\d{2}T[\d:.]+Z?\]/g, '')
+    .replace(/\b\d{10,}\b/g, '')
+    .replace(/\s+/g, ' ').trim();
   entries.forEach(([id, e])=>{
-    const key = (e.type||'Error') + ': ' + (e.message||'');
+    const key = (e.type||'Error') + ': ' + groupKey(e.message);
     if(!groups[key]) groups[key] = { count:0, first:e.time, last:e.time, extra:e.extra, ids:[] };
     groups[key].count++;
     groups[key].first = Math.min(groups[key].first, e.time);
