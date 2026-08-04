@@ -644,6 +644,10 @@ window.addEventListener('error', (e)=>{
 window.addEventListener('error', (e)=>{
   const t = e.target;
   if(!t || t === window || !t.tagName) return;
+  /* நம்ம player-ஓட <audio>/<video>-க்கு தனியா error handler இருக்கு — அது
+     activeMedia() check பண்ணி, தேவைப்பட்டா auto-skip பண்ணும். இங்க மறுபடி
+     பதிவு பண்ணா, நாம வேணும்னே காலி பண்ண element-ஓட பிழையும் வந்துடும். */
+  if(t.tagName === 'AUDIO' || t.tagName === 'VIDEO') return;
   const src = t.currentSrc || t.src || t.href || '';
   if(!src) return;
   logAppError('Load Failed', t.tagName.toLowerCase() + ' could not load', String(src).slice(0,300));
@@ -2257,7 +2261,7 @@ async function loadAndPlay(){
 
   if(myLoad !== loadSeq){ return; }   /* இதுக்குள்ள வேற பாட்டு தொடங்கிடுச்சு */
   if(item.type === 'video'){
-    audioEl.pause(); audioEl.src = '';
+    audioEl.pause(); clearMedia(audioEl);
     videoVisual.style.display = 'block';
     audioVisual.style.display = 'none';
     videoVisual.volume = masterVolume;
@@ -2269,7 +2273,7 @@ async function loadAndPlay(){
       requestVideoFullscreen();
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   } else {
-    videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
+    videoVisual.pause(); clearMedia(videoVisual); videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
     audioEl.src = playUrl;
     audioEl.volume = masterVolume;
@@ -2350,6 +2354,13 @@ function trackRecentPlay(item){
   set(ref(db, 'recent/' + item.type + '_' + item.id), {
     id: item.id, type: item.type, playedAt: Date.now()
   }).catch(()=>{});
+}
+
+/* src='' போட்டா அது document URL-ஆ resolve ஆகும் — browser நம்ம HTML page-ஐயே
+   media-ஆ load பண்ண முயற்சி பண்ணி fail ஆகும். ஒவ்வொரு பாட்டுக்கும் ஒரு வீண்
+   request + ஒரு போலி error. attribute-ஐ நீக்கறதுதான் சரியான வழி. */
+function clearMedia(el){
+  try{ el.removeAttribute('src'); el.load(); }catch(e){}
 }
 
 function activeMedia(){
