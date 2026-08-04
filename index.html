@@ -726,10 +726,12 @@ let usersData = {};   // pushId -> {name, pin, role}
 let currentUser = null; // {id, name, role}
 let selectMode = false;
 let masterVolume = 1;
-let fadeOutStarted = false;
 let currentBlobUrl = null; // tracks active offline-cache Blob URL so we can revoke the previous one and avoid memory buildup
-const CROSSFADE_SECONDS = 3;
-const FADE_IN_SECONDS = 0.5;   // பாட்டு தொடங்கும்போது சின்ன fade — click சத்தம் வராம இருக்க
+/* fade in / fade out முழுசா நீக்கப்பட்டது (4 ஆக 2026): fade-ஐ setInterval-ல
+   நடத்தினோம். மொபைல் browser background-ல போனா அந்த timer-ஐ throttle/freeze
+   பண்ணிடும் — அப்போ volume 0-க்கு பக்கத்துலயே நின்னுடும். பாட்டு ஓடிட்டு
+   இருக்கும், ஆனா சத்தம் வராது; பயன்படுத்துறவங்களுக்கு "நின்னுடுச்சு" மாதிரி
+   தெரியும். இப்போ ஒவ்வொரு பாட்டும் நேரடியா masterVolume-ல தொடங்குது. */
 let consecutiveAutoSkips = 0; // guards against an infinite skip loop if several songs in a row fail
 const MAX_CONSECUTIVE_AUTO_SKIPS = 3;
 let filterSinger = null;
@@ -2220,14 +2222,13 @@ function applyPendingSeekTo(media){
 async function loadAndPlay(){
   const item = currentItem();
   if(!item) return;
-  /* முந்தைய பாட்டோட fade timer இன்னும் ஓடிட்டு இருந்தா, அது புது பாட்டோட
-     volume-ஐ எழுதிடும் — அதான் நடுவுல விசித்திரமான சத்தம். முதல்ல அதை நிறுத்தணும். */
   const myLoad = ++loadSeq;
   isLoadingTrack = true;
+  loadStartedAt = Date.now();
+  endStallHandled = false;
   userPaused = false;
-  cancelFade();
   try{ audioEl.pause(); }catch(e){}
-  audioEl.volume = 0;
+  audioEl.volume = masterVolume;
   const url = buildFileUrl(item.key);
   document.getElementById('playerTitle').textContent = item.title || item.key;
   document.getElementById('playerArtist').textContent = item.artist || 'Unknown';
@@ -2255,7 +2256,6 @@ async function loadAndPlay(){
   }
 
   if(myLoad !== loadSeq){ return; }   /* இதுக்குள்ள வேற பாட்டு தொடங்கிடுச்சு */
-  fadeOutStarted = false;
   if(item.type === 'video'){
     audioEl.pause(); audioEl.src = '';
     videoVisual.style.display = 'block';
@@ -2272,12 +2272,11 @@ async function loadAndPlay(){
     videoVisual.pause(); videoVisual.src=''; videoVisual.style.display='none';
     audioVisual.style.display = 'flex';
     audioEl.src = playUrl;
-    audioEl.volume = 0;
+    audioEl.volume = masterVolume;
     applyPendingSeekTo(audioEl);
     try{
       await audioEl.play();
       playSucceeded = true;
-      fadeAudioVolume(audioEl, 0, masterVolume, FADE_IN_SECONDS);
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   }
   if(!playSucceeded){
@@ -2286,15 +2285,19 @@ async function loadAndPlay(){
     await new Promise(r=>setTimeout(r, 700));
     try{
       const media = item.type === 'video' ? videoVisual : audioEl;
-      if(item.type !== 'video'){ media.volume = 0; }
+      media.volume = masterVolume;
       await media.play();
       playSucceeded = true;
-      if(item.type !== 'video'){ fadeAudioVolume(media, 0, masterVolume, FADE_IN_SECONDS); }
-      else { requestVideoFullscreen(); }
+      if(item.type === 'video'){ requestVideoFullscreen(); }
     }catch(e2){
       consecutiveAutoSkips++;
-      console.warn('Melody playback failed, auto-skip:', errMsg);
-      logAppError('Playback Failed', errMsg, item && (item.title||item.key));
+      /* முன்னாடி errMsg காலியா இருந்தா logAppError அதை noise-ன்னு நினைச்சு
+         தூக்கிப் போட்டுடும் — நிஜமான fail எதுவுமே பதிவாகாது. இப்போ retry-ஓட
+         பிழையையும் சேர்த்து, கண்டிப்பா ஏதாவது ஒரு செய்தி இருக்கும்படி பண்றோம். */
+      const failMsg = [errMsg, e2 && e2.message ? ('Retry: ' + e2.message) : '']
+        .filter(Boolean).join(' | ') || 'Playback failed for an unknown reason';
+      console.warn('Melody playback failed, auto-skip:', failMsg);
+      logAppError('Playback Failed', failMsg, (item && (item.title||item.key)) || '');
       if(consecutiveAutoSkips <= MAX_CONSECUTIVE_AUTO_SKIPS){
         setTimeout(()=> playNext(false), 400);
       }
@@ -2354,33 +2357,16 @@ function activeMedia(){
   return (item && item.type === 'video') ? videoVisual : audioEl;
 }
 
-let fadeTimerHandle = null;
-function cancelFade(){
-  if(fadeTimerHandle){ clearInterval(fadeTimerHandle); fadeTimerHandle = null; }
-}
 /* ஒரு பாட்டுல இருந்து அடுத்த பாட்டுக்கு மாறும்போது இது true.
    அப்போ watchdog குறுக்கே வரக்கூடாது. */
 let isLoadingTrack = false;
 let loadSeq = 0;
+let loadStartedAt = 0;   /* isLoadingTrack எப்போ true ஆனது — dead-man check-க்கு */
+/* ஒரு பாட்டுக்கு ஒரே ஒரு தடவைதான் "queue நகரல" rescue — இல்லைனா queue
+   முடிஞ்ச இடத்துல 3 விநாடிக்கு ஒரு தடவை பதிவாகிட்டே இருக்கும். */
+let endStallHandled = false;
 /* user-ஆ pause பண்ணினாரா — அப்படினா watchdog தானா play பண்ணக்கூடாது */
 let userPaused = false;
-function fadeAudioVolume(media, from, to, seconds){
-  cancelFade();
-  const steps = 20;
-  const stepMs = (seconds*1000)/steps;
-  let i = 0;
-  media.volume = Math.max(0, Math.min(1, from));
-  fadeTimerHandle = setInterval(()=>{
-    i++;
-    const v = from + (to-from) * (i/steps);
-    media.volume = Math.max(0, Math.min(1, v));
-    if(i >= steps){
-      clearInterval(fadeTimerHandle);
-      fadeTimerHandle = null;
-      media.volume = Math.max(0, Math.min(1, to));
-    }
-  }, stepMs);
-}
 
 function requestVideoFullscreen(){
   try{
@@ -2405,7 +2391,6 @@ function togglePlay(){
     if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else {
     userPaused = true;
-    cancelFade();
     m.volume = masterVolume;
     m.pause(); updatePlayIcons(false);
     if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -2511,23 +2496,34 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
 // runs immediately the moment the app is foregrounded again (visibilitychange),
 // so a stalled queue always self-heals instead of sitting paused indefinitely.
 function stallWatchdogTick(){
+  /* loadAndPlay நடுவுல எதிர்பாராம நின்னுட்டா isLoadingTrack true-லயே தங்கிடும்.
+     அப்போ 'ended' handler-உம் watchdog-உம் ரெண்டுமே வேலை செய்யாது — queue
+     அப்படியே நின்னுடும். 12 விநாடிக்கு மேல load ஆகிட்டே இருந்தா அது தப்பு,
+     கதவை திறந்துடுறோம். */
+  if(isLoadingTrack && loadStartedAt && (Date.now() - loadStartedAt) > 12000){
+    isLoadingTrack = false;
+    logAppError('Load Stuck', 'Track load did not finish in 12s — queue unlocked', '');
+  }
   if(isLoadingTrack) return;   /* பாட்டு மாறிட்டு இருக்கு — குறுக்கே வரக்கூடாது */
-  if(userPaused) return;       /* user-ஆ நிறுத்தினாரு — தானா ஓட்டக்கூடாது */
   if(!currentQueue.length || currentIndex < 0) return;
   const m = activeMedia();
   if(!m) return;
   const stuckAtEnd = m.paused && isFinite(m.duration) && m.duration > 0 && (m.duration - m.currentTime) <= 0.5;
   const stuckPaused = m.paused && m.currentTime === 0 && m.readyState >= 2 && !m.seeking;
   if(stuckAtEnd){
-    /* இது தானா சரியாகுது — ஆனா ஏதோ தப்பு நடந்திருக்கு. பதிவு பண்ணா
-       அது எத்தனை தடவை நடக்குதுன்னு தெரியும். */
+    /* பாட்டு முடிஞ்சிடுச்சு — இது user pause பண்ணினது இல்ல, அதனால userPaused
+       இங்க பார்க்கக்கூடாது. (Android-ல notification/call வந்தா OS pause
+       அனுப்பும், அப்போ userPaused true ஆகி queue செத்துடும்.) */
+    if(endStallHandled) return;
+    endStallHandled = true;
     logAppError('Queue Stalled', 'Song ended but the queue did not advance on its own',
       (currentItem() && (currentItem().title || currentItem().key)) || '');
     if(repeatMode === 2){ m.currentTime = 0; m.play().catch(()=>{}); }
     else { playNext(false); }
   } else if(stuckPaused){
-    /* fade நடுவுல நின்னு volume 0-ல இருந்தா, play பண்ணினாலும் சத்தம் வராது */
-    if(m === audioEl && m.volume < 0.05){ cancelFade(); m.volume = masterVolume; }
+    if(userPaused) return;     /* user-ஆ நிறுத்தினாரு — தானா ஓட்டக்கூடாது */
+    /* volume ஏதோ காரணத்துல 0-ல இருந்தா, play பண்ணினாலும் சத்தம் வராது */
+    if(m === audioEl && m.volume < 0.05){ m.volume = masterVolume; }
     m.play().catch(()=>{});
   }
 }
