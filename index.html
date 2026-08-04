@@ -297,7 +297,7 @@ input{font-family:inherit;}
 <!-- ================= MAIN APP ================= -->
 <div id="appScreen" class="screen">
   <div class="topbar">
-    <h1>Melo<span>dy</span></h1>
+    <h1 id="appLogo" style="user-select:none;">Melo<span>dy</span></h1>
     <div style="display:flex; gap:8px;">
       <button class="icon-btn" id="themeToggleBtn">🌙</button>
       <button class="icon-btn" id="manageUsersBtn">👥</button>
@@ -600,7 +600,24 @@ const auth = getAuth(fbApp);
 // no manual testing needed to catch issues.
 let errorLogQueue = [];
 let errorLogFlushTimer = null;
+/* நம்ம code-ஓட பிழை இல்லாதது — Google script, cross-origin, suspend-ல வர்ர
+   permission பிழை — இதெல்லாம் பதிவானா நிஜமான bug மறைஞ்சுடும் */
+function isNoiseError(message, extra){
+  const s = ((message || '') + ' ' + (extra || '')).toLowerCase();
+  if(!s.trim()) return true;
+  if(s.indexOf('script error') >= 0) return true;          /* cross-origin, விவரமே இல்ல */
+  if(s.indexOf('permission_denied') >= 0) return true;
+  if(s.indexOf('resizeobserver loop') >= 0) return true;
+  const outside = ['apis.google.com','accounts.google.com','gstatic.com',
+                   'googleapis.com','googletagmanager.com','doubleclick',
+                   'facebook.net','extension://'];
+  return outside.some(d => s.indexOf(d) >= 0);
+}
+let inErrorLogger = false;
 function logAppError(type, message, extra){
+  if(inErrorLogger) return;                 /* loop-ஐ தடுக்க */
+  if(errorLogQueue.length >= 40) return;    /* ஒரே session-ல அளவுக்கு மீறி வேண்டாம் */
+  if(isNoiseError(message, extra)) return;
   try{
     const entry = {
       type: type,
@@ -625,10 +642,48 @@ function flushErrorLogQueue(){
 window.addEventListener('error', (e)=>{
   logAppError('JS Error', e.message, (e.filename||'') + ':' + (e.lineno||'') + ' ' + (e.error && e.error.stack ? e.error.stack.slice(0,400) : ''));
 });
+/* file/img/script ஏற்ற முடியாம போனா 'error' bubble ஆகாது — capture-ல மட்டும் வரும் */
+window.addEventListener('error', (e)=>{
+  const t = e.target;
+  if(!t || t === window || !t.tagName) return;
+  const src = t.currentSrc || t.src || t.href || '';
+  if(!src) return;
+  logAppError('Load Failed', t.tagName.toLowerCase() + ' could not load', String(src).slice(0,300));
+}, true);
 window.addEventListener('unhandledrejection', (e)=>{
   const reason = e.reason;
   logAppError('Unhandled Promise', reason && reason.message ? reason.message : String(reason), reason && reason.stack ? reason.stack.slice(0,400) : '');
 });
+/* code-ல console.error போட்ட இடமெல்லாம் இப்போ Auto Check-ல வரும் */
+(function(){
+  const orig = console.error;
+  console.error = function(){
+    if(inErrorLogger) return orig.apply(console, arguments);
+    inErrorLogger = true;
+    try{
+      const parts = Array.prototype.slice.call(arguments).map(a =>
+        (a && a.message) ? a.message : (typeof a === 'object' ? JSON.stringify(a).slice(0,200) : String(a)));
+      inErrorLogger = false;
+      logAppError('Console Error', parts.join(' ').slice(0,400), '');
+    }catch(e){}
+    inErrorLogger = false;
+    return orig.apply(console, arguments);
+  };
+})();
+
+/* STRONGER 3: பாட்டு தொடங்க 10 விநாடிக்கு மேல ஆனா, அது ஒரு பிரச்சனை */
+let playStartWatch = null;
+function watchPlayStart(item){
+  if(playStartWatch) clearTimeout(playStartWatch);
+  playStartWatch = setTimeout(()=>{
+    const m = activeMedia();
+    if(m && m.paused && m.currentTime === 0){
+      logAppError('Slow Start', 'Track did not begin playing within 10 seconds',
+        (item && (item.title || item.key)) || '');
+    }
+  }, 10000);
+}
+
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushErrorLogQueue(); });
 
 
@@ -676,6 +731,7 @@ let masterVolume = 1;
 let fadeOutStarted = false;
 let currentBlobUrl = null; // tracks active offline-cache Blob URL so we can revoke the previous one and avoid memory buildup
 const CROSSFADE_SECONDS = 3;
+const FADE_IN_SECONDS = 0.5;   // பாட்டு தொடங்கும்போது சின்ன fade — click சத்தம் வராம இருக்க
 let consecutiveAutoSkips = 0; // guards against an infinite skip loop if several songs in a row fail
 const MAX_CONSECUTIVE_AUTO_SKIPS = 3;
 let filterSinger = null;
@@ -870,22 +926,50 @@ function applyRoleUI(){
   document.getElementById('selectModeBtn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('manageUsersBtn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('dedupeBtn').style.display = isAdmin ? 'flex' : 'none';
-  if(isAdmin) runAutoCheckDigest();
+  if(isAdmin){
+    runAutoCheckDigest();
+    /* Melody logo-வை 1 விநாடி அழுத்திப் பிடிச்சா, 3 நாள் காக்காம உடனே பாக்கலாம் */
+    const scBtn = document.getElementById('appLogo');
+    if(scBtn){
+      let holdT = null;
+      const start = ()=>{ holdT = setTimeout(async ()=>{
+        holdT = null;
+        flushErrorLogQueue();
+        await new Promise(r=>setTimeout(r, 600));
+        const shown = await runAutoCheckDigest(true);
+        if(!shown) toast('Auto Check — no issues logged');
+      }, 1000); };
+      const stop = ()=>{ if(holdT){ clearTimeout(holdT); holdT = null; } };
+      scBtn.addEventListener('touchstart', start, {passive:true});
+      scBtn.addEventListener('touchend', stop);
+      scBtn.addEventListener('touchmove', stop);
+      scBtn.addEventListener('mousedown', start);
+      scBtn.addEventListener('mouseup', stop);
+      scBtn.addEventListener('mouseleave', stop);
+    }
+  }
 }
 
 // ---------------- AUTO CHECK: 3-day admin digest popup ----------------
 const AUTO_CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-async function runAutoCheckDigest(){
+async function runAutoCheckDigest(force){
   try{
     const lastCheck = Number(localStorage.getItem('melody_lastErrorCheck') || 0);
-    if(Date.now() - lastCheck < AUTO_CHECK_INTERVAL_MS) return; // not due yet
+    if(!force && Date.now() - lastCheck < AUTO_CHECK_INTERVAL_MS) return; // not due yet
     const snap = await get(ref(db, 'errorLogs'));
     const all = snap.val() || {};
     const unresolved = Object.entries(all).filter(([id, e]) => !e.seen);
-    localStorage.setItem('melody_lastErrorCheck', String(Date.now()));
-    if(unresolved.length === 0) return;
+    if(unresolved.length === 0){
+      /* ஒண்ணும் இல்ல — அப்போ மட்டும் timer-ஐ reset பண்ணலாம் */
+      localStorage.setItem('melody_lastErrorCheck', String(Date.now()));
+      return;
+    }
+    /* பிழை இருக்கு. "Mark reviewed" அழுத்தினா மட்டும்தான் timer reset ஆகும் —
+       இல்லைனா அடுத்த தடவை திறக்கும்போது மறுபடி காட்டும். */
     showAutoCheckPopup(unresolved);
+    return true;
   }catch(e){ console.warn('Auto Check digest failed:', e.message); }
+  return false;
 }
 function showAutoCheckPopup(entries){
   // Group identical messages together with a count + first/last seen time
@@ -901,7 +985,7 @@ function showAutoCheckPopup(entries){
   const lines = Object.entries(groups).map(([key, g])=>
     `• ${key}\n   (${g.count}x, last: ${new Date(g.last).toLocaleString()})${g.extra ? '\n   ↳ '+g.extra : ''}`
   );
-  const fullText = `Melody Auto Check — ${entries.length} issue(s) found in last 3 days:\n\n` + lines.join('\n\n');
+  const fullText = `Melody Auto Check — ${entries.length} issue(s) not yet reviewed:\n\n` + lines.join('\n\n');
 
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
@@ -923,6 +1007,7 @@ function showAutoCheckPopup(entries){
   overlay.querySelector('#autoCheckCloseBtn').addEventListener('click', ()=>{
     const allIds = Object.values(groups).flatMap(g=>g.ids);
     allIds.forEach(id => update(ref(db, 'errorLogs/' + id), { seen: true }).catch(()=>{}));
+    localStorage.setItem('melody_lastErrorCheck', String(Date.now()));
     overlay.remove();
   });
 }
@@ -2131,6 +2216,14 @@ function applyPendingSeekTo(media){
 async function loadAndPlay(){
   const item = currentItem();
   if(!item) return;
+  /* முந்தைய பாட்டோட fade timer இன்னும் ஓடிட்டு இருந்தா, அது புது பாட்டோட
+     volume-ஐ எழுதிடும் — அதான் நடுவுல விசித்திரமான சத்தம். முதல்ல அதை நிறுத்தணும். */
+  const myLoad = ++loadSeq;
+  isLoadingTrack = true;
+  userPaused = false;
+  cancelFade();
+  try{ audioEl.pause(); }catch(e){}
+  audioEl.volume = 0;
   const url = buildFileUrl(item.key);
   document.getElementById('playerTitle').textContent = item.title || item.key;
   document.getElementById('playerArtist').textContent = item.artist || 'Unknown';
@@ -2157,6 +2250,7 @@ async function loadAndPlay(){
     currentBlobUrl = null;
   }
 
+  if(myLoad !== loadSeq){ return; }   /* இதுக்குள்ள வேற பாட்டு தொடங்கிடுச்சு */
   fadeOutStarted = false;
   if(item.type === 'video'){
     audioEl.pause(); audioEl.src = '';
@@ -2179,7 +2273,7 @@ async function loadAndPlay(){
     try{
       await audioEl.play();
       playSucceeded = true;
-      fadeAudioVolume(audioEl, 0, masterVolume, CROSSFADE_SECONDS);
+      fadeAudioVolume(audioEl, 0, masterVolume, FADE_IN_SECONDS);
     }catch(e){ errMsg = errMsg || ('Play error: ' + e.message); }
   }
   if(!playSucceeded){
@@ -2191,7 +2285,7 @@ async function loadAndPlay(){
       if(item.type !== 'video'){ media.volume = 0; }
       await media.play();
       playSucceeded = true;
-      if(item.type !== 'video'){ fadeAudioVolume(media, 0, masterVolume, CROSSFADE_SECONDS); }
+      if(item.type !== 'video'){ fadeAudioVolume(media, 0, masterVolume, FADE_IN_SECONDS); }
       else { requestVideoFullscreen(); }
     }catch(e2){
       consecutiveAutoSkips++;
@@ -2207,6 +2301,8 @@ async function loadAndPlay(){
     console.warn('Melody playback warning:', errMsg);
     logAppError('Playback Warning', errMsg, item && (item.title||item.key));
   }
+  if(myLoad === loadSeq) isLoadingTrack = false;
+  watchPlayStart(item);
   if(playSucceeded) consecutiveAutoSkips = 0;
   updatePlayIcons(playSucceeded);
   showMiniPlayer();
@@ -2226,8 +2322,8 @@ function updateMediaSession(item){
         { src: 'https://melody.sramesh.in/icon-512.png', sizes: '512x512', type: 'image/png' }
       ]
     });
-    navigator.mediaSession.setActionHandler('play', ()=>{ activeMedia().play(); });
-    navigator.mediaSession.setActionHandler('pause', ()=>{ activeMedia().pause(); });
+    navigator.mediaSession.setActionHandler('play', ()=>{ userPaused = false; activeMedia().play(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ userPaused = true; activeMedia().pause(); });
     navigator.mediaSession.setActionHandler('previoustrack', playPrev);
     navigator.mediaSession.setActionHandler('nexttrack', ()=>playNext(true));
     try{
@@ -2255,8 +2351,17 @@ function activeMedia(){
 }
 
 let fadeTimerHandle = null;
-function fadeAudioVolume(media, from, to, seconds){
+function cancelFade(){
   if(fadeTimerHandle){ clearInterval(fadeTimerHandle); fadeTimerHandle = null; }
+}
+/* ஒரு பாட்டுல இருந்து அடுத்த பாட்டுக்கு மாறும்போது இது true.
+   அப்போ watchdog குறுக்கே வரக்கூடாது. */
+let isLoadingTrack = false;
+let loadSeq = 0;
+/* user-ஆ pause பண்ணினாரா — அப்படினா watchdog தானா play பண்ணக்கூடாது */
+let userPaused = false;
+function fadeAudioVolume(media, from, to, seconds){
+  cancelFade();
   const steps = 20;
   const stepMs = (seconds*1000)/steps;
   let i = 0;
@@ -2291,9 +2396,13 @@ function updatePlayIcons(playing){
 function togglePlay(){
   const m = activeMedia();
   if(m.paused){
+    userPaused = false;
     m.play(); updatePlayIcons(true);
     if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else {
+    userPaused = true;
+    cancelFade();
+    m.volume = masterVolume;
     m.pause(); updatePlayIcons(false);
     if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   }
@@ -2377,18 +2486,12 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
     document.getElementById('miniProgressFill').style.width = pct + '%';
     document.getElementById('curTime').textContent = fmtTime(media.currentTime);
     document.getElementById('durTime').textContent = fmtTime(media.duration);
-    if(media === audioEl && isFinite(media.duration) && repeatMode !== 2){
-      const remaining = media.duration - media.currentTime;
-      if(!fadeOutStarted && remaining > 0 && remaining <= CROSSFADE_SECONDS){
-        fadeOutStarted = true;
-        fadeAudioVolume(media, media.volume, 0, CROSSFADE_SECONDS);
-      }
-    }
   });
   media.addEventListener('ended', ()=>{
     if(media !== activeMedia()) return;
     try{ localStorage.removeItem('melody_resume'); }catch(e){}
     if(repeatMode === 2){ media.currentTime=0; media.play(); return; }
+    if(isLoadingTrack) return;   /* watchdog ஏற்கனவே அடுத்ததுக்கு போயிடுச்சு */
     playNext(false);
   });
   media.addEventListener('play', ()=>{ if(media===activeMedia()) updatePlayIcons(true); });
@@ -2404,15 +2507,23 @@ document.getElementById('repeatBtn').addEventListener('click', function(){
 // runs immediately the moment the app is foregrounded again (visibilitychange),
 // so a stalled queue always self-heals instead of sitting paused indefinitely.
 function stallWatchdogTick(){
+  if(isLoadingTrack) return;   /* பாட்டு மாறிட்டு இருக்கு — குறுக்கே வரக்கூடாது */
+  if(userPaused) return;       /* user-ஆ நிறுத்தினாரு — தானா ஓட்டக்கூடாது */
   if(!currentQueue.length || currentIndex < 0) return;
   const m = activeMedia();
   if(!m) return;
   const stuckAtEnd = m.paused && isFinite(m.duration) && m.duration > 0 && (m.duration - m.currentTime) <= 0.5;
   const stuckPaused = m.paused && m.currentTime === 0 && m.readyState >= 2 && !m.seeking;
   if(stuckAtEnd){
+    /* இது தானா சரியாகுது — ஆனா ஏதோ தப்பு நடந்திருக்கு. பதிவு பண்ணா
+       அது எத்தனை தடவை நடக்குதுன்னு தெரியும். */
+    logAppError('Queue Stalled', 'Song ended but the queue did not advance on its own',
+      (currentItem() && (currentItem().title || currentItem().key)) || '');
     if(repeatMode === 2){ m.currentTime = 0; m.play().catch(()=>{}); }
     else { playNext(false); }
   } else if(stuckPaused){
+    /* fade நடுவுல நின்னு volume 0-ல இருந்தா, play பண்ணினாலும் சத்தம் வராது */
+    if(m === audioEl && m.volume < 0.05){ cancelFade(); m.volume = masterVolume; }
     m.play().catch(()=>{});
   }
 }
