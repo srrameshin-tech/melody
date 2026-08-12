@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  FIREBASE_API_KEY: AIzaSyDufR0ExIBjNBmT578D-MIreUD5_1lRESI
+  DB_URL: https://melody-app-e29f5-default-rtdb.asia-southeast1.firebasedatabase.app
+
 jobs:
   backup:
     runs-on: ubuntu-latest
@@ -16,25 +20,87 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Sign in to Firebase
+        env:
+          BACKUP_EMAIL: ${{ secrets.MELODY_BACKUP_EMAIL }}
+          BACKUP_PASSWORD: ${{ secrets.MELODY_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_EMAIL}" ] || [ -z "${BACKUP_PASSWORD}" ]; then
+            echo "MELODY_BACKUP_EMAIL / MELODY_BACKUP_PASSWORD are not set as repository secrets."
+            exit 1
+          fi
+
+          payload=$(python3 -c '
+          import json, os
+          print(json.dumps({
+              "email": os.environ["BACKUP_EMAIL"],
+              "password": os.environ["BACKUP_PASSWORD"],
+              "returnSecureToken": True,
+          }))')
+
+          sign_in() {
+            curl -s -X POST \
+              "https://identitytoolkit.googleapis.com/v1/accounts:$1?key=${FIREBASE_API_KEY}" \
+              -H "Content-Type: application/json" \
+              --data-binary "$payload"
+          }
+
+          # The first run creates the backup account; every run after signs in.
+          resp=$(sign_in signInWithPassword)
+          if ! echo "$resp" | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin).get('idToken') else 1)"; then
+            echo "Sign-in returned no token, trying to create the backup account."
+            resp=$(sign_in signUp)
+          fi
+
+          token=$(echo "$resp" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          if not d.get('idToken'):
+              print('Firebase auth failed:', d.get('error', {}).get('message', 'unknown'), file=sys.stderr)
+              raise SystemExit(1)
+          print(d['idToken'])
+          ")
+
+          echo "::add-mask::$token"
+          echo "ID_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "Signed in."
+
       - name: Fetch Firebase Realtime Database export
         run: |
+          set -euo pipefail
           mkdir -p backups
           DATE=$(date -u +"%Y-%m-%d")
-          curl -sf "https://melody-app-e29f5-default-rtdb.asia-southeast1.firebasedatabase.app/.json" \
-            -o "backups/melody-backup-${DATE}.json"
-          echo "Saved backups/melody-backup-${DATE}.json"
+          OUT="backups/melody-backup-${DATE}.json"
+
+          code=$(curl -s -o "$OUT" -w "%{http_code}" \
+            --get "${DB_URL}/.json" --data-urlencode "auth=${ID_TOKEN}")
+
+          if [ "$code" != "200" ]; then
+            echo "Database export returned HTTP ${code}."
+            head -c 300 "$OUT" || true
+            rm -f "$OUT"
+            exit 1
+          fi
+
+          python3 -c "
+          import json
+          d = json.load(open('${OUT}'))
+          if not isinstance(d, dict) or not d:
+              raise SystemExit('Export was empty, refusing to commit it.')
+          print('Nodes backed up:', ', '.join(sorted(d)))
+          "
           ls -la backups/
 
       - name: Prune old backups (keep last 12)
         run: |
           cd backups
           ls -1t melody-backup-*.json | tail -n +13 | xargs -r rm -f
-          cd ..
 
       - name: Commit and push backup
         run: |
           git config user.name "melody-backup-bot"
           git config user.email "backup-bot@melody.sramesh.in"
-          git add backups/
+          git add -A backups/
           git diff --cached --quiet || git commit -m "Weekly Firebase backup $(date -u +'%Y-%m-%d')"
           git push
