@@ -1,0 +1,61 @@
+{
+  "rules": {
+    ".read": "auth != null && auth.token.email === 'melody-backup@sramesh.in'",
+    ".write": false,
+
+    "members": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('members').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && ((auth.uid === $uid && !data.exists() && newData.child('email').val() === auth.token.email && ((!root.child('members').exists() && newData.child('role').val() === 'admin' && newData.child('status').val() === 'approved') || (root.child('members').exists() && newData.child('role').val() === 'member' && newData.child('status').val() === 'pending'))) || root.child('members').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "!newData.exists() || newData.hasChildren(['name', 'email', 'role', 'status'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length < 60" },
+        "email": { ".validate": "newData.isString() && newData.val().length > 0" },
+        "role": { ".validate": "newData.val() === 'admin' || newData.val() === 'member'" },
+        "status": { ".validate": "newData.val() === 'approved' || newData.val() === 'pending'" },
+        "created": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "songs": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'"
+    },
+
+    "videos": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'"
+    },
+
+    "playlists": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'"
+    },
+
+    "favorites": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'"
+    },
+
+    "recent": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'"
+    },
+
+    "offlineIntent": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'"
+    },
+
+    "errorLogs": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('status').val() === 'approved'"
+    },
+
+    "users": {
+      ".read": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('members').child(auth.uid).child('role').val() === 'admin'"
+    }
+  }
+}
