@@ -83,13 +83,28 @@ jobs:
             exit 1
           fi
 
-          python3 -c "
-          import json
-          d = json.load(open('${OUT}'))
+          python3 - "$OUT" << 'PY'
+          import json, sys
+          path = sys.argv[1]
+          d = json.load(open(path))
           if not isinstance(d, dict) or not d:
               raise SystemExit('Export was empty, refusing to commit it.')
+
+          # This repository is public. The member list holds real email
+          # addresses, and nothing in it is worth restoring: accounts live in
+          # Firebase Auth, and the first person to sign up becomes the admin
+          # again. So it is dropped before the file is committed.
+          dropped = [k for k in ('members', 'errorLogs') if k in d]
+          for k in dropped:
+              del d[k]
+
+          with open(path, 'w', encoding='utf-8') as f:
+              json.dump(d, f, ensure_ascii=False, indent=2)
+
           print('Nodes backed up:', ', '.join(sorted(d)))
-          "
+          if dropped:
+              print('Left out on purpose:', ', '.join(dropped))
+          PY
           ls -la backups/
 
       - name: Prune old backups (keep last 12)
