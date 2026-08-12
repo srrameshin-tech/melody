@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="app-build" content="20260812-1321">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -83,17 +84,24 @@ input{font-family:inherit;}
 .brand{font-size:38px; font-weight:900; letter-spacing:-1px; margin:0 0 4px;}
 .brand span{color:var(--yellow);}
 .tagline{color:var(--grey); font-size:14px; margin:0 0 36px;}
-.pin-dots{display:flex; gap:14px; margin-bottom:32px;}
-.pin-dot{width:16px; height:16px; border-radius:50%; border:2px solid var(--grey); transition:.15s;}
-.pin-dot.filled{background:var(--yellow); border-color:var(--yellow);}
-.pin-dot.err{background:var(--danger); border-color:var(--danger); animation:shake .3s;}
-@keyframes shake{0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}}
-.keypad{display:grid; grid-template-columns:repeat(3,72px); gap:16px; justify-content:center;}
-.key{width:72px; height:72px; border-radius:50%; background:var(--black3); color:var(--white);
-  font-size:26px; font-weight:600; display:flex; align-items:center; justify-content:center;
-  transition:.12s; border:1px solid var(--key-border); touch-action:manipulation; -webkit-user-select:none; user-select:none;}
-.key:active{background:var(--yellow); color:var(--ink); transform:scale(0.94);}
-.key.ghost{background:none; border:none;}
+.login-form{width:100%; max-width:340px; display:flex; flex-direction:column; gap:12px; text-align:left;}
+.login-form input{width:100%; padding:15px 16px; border-radius:12px; font-size:17px;
+  background:var(--black3); color:var(--white); border:1px solid var(--key-border);}
+.login-form input:focus{outline:none; border-color:var(--yellow);}
+.login-msg{min-height:22px; font-size:14.5px; line-height:1.4; margin:0; text-align:center;}
+.login-link{background:none; border:none; color:var(--yellow); font-size:15px; font-weight:700;
+  padding:10px; text-decoration:underline; text-align:center;}
+.pending-title{font-size:22px; font-weight:800; color:var(--yellow); margin:0; text-align:center;}
+.pending-text{color:var(--grey); font-size:15px; line-height:1.55; margin:0; text-align:center;}
+.member-row{display:flex; align-items:center; gap:10px; padding:12px 0;
+  border-bottom:1px solid var(--border-soft); flex-wrap:wrap;}
+.member-row:last-child{border-bottom:none;}
+.member-name{flex:1; min-width:140px; font-size:16px; font-weight:700;}
+.member-sub{display:block; color:var(--grey); font-size:12.5px; font-weight:500; word-break:break-all;}
+.pill{font-size:12px; font-weight:800; padding:5px 10px; border-radius:999px;
+  border:none; color:var(--ink); background:var(--yellow);}
+.pill.wait{background:transparent; color:var(--yellow); border:1px solid var(--yellow);}
+.pill.no{background:transparent; color:var(--danger); border:1px solid var(--danger);}
 
 /* ===== APP SHELL ===== */
 #appScreen{background:var(--black);}
@@ -282,15 +290,22 @@ input{font-family:inherit;}
 <div id="loginScreen" class="screen active">
   <div class="login-vinyl"></div>
   <h1 class="brand">Melo<span>dy</span></h1>
-  <p class="tagline" id="loginTagline">Enter your PIN</p>
-  <div class="pin-dots" id="pinDots">
-    <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+  <p class="tagline" id="loginTagline">Sign in to listen</p>
+
+  <div class="login-form" id="loginForm">
+    <input type="email" id="loginEmail" placeholder="Email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+    <input type="text" id="signupName" placeholder="Your name" autocomplete="name" style="display:none;">
+    <button class="btn primary" id="loginBtn">Sign in</button>
+    <p class="login-msg" id="loginMsg"></p>
+    <button class="login-link" id="toggleSignupBtn">New here? Create an account</button>
+    <button class="login-link" id="forgotBtn">Forgot password</button>
   </div>
-  <div class="keypad" id="keypad">
-    <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button>
-    <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button>
-    <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button>
-    <button class="key ghost"></button><button class="key" data-k="0">0</button><button class="key ghost" id="delKey">⌫</button>
+
+  <div class="login-form" id="pendingBox" style="display:none;">
+    <p class="pending-title">Waiting to be let in</p>
+    <p class="pending-text">Ramesh has to approve this account. Open Melody again after that and you are in.</p>
+    <button class="login-link" id="pendingSignOutBtn">Use a different account</button>
   </div>
 </div>
 
@@ -532,33 +547,11 @@ input{font-family:inherit;}
 <div class="sheet-overlay" id="manageUsersOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <h3>Manage Users</h3>
+    <h3>People</h3>
     <div id="userListWrap"></div>
-    <button class="btn primary" id="addUserBtn" style="margin-top:14px;">＋ Add Person</button>
-  </div>
-</div>
-
-<div class="sheet-overlay" id="addUserOverlay">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <h3 id="userFormTitle">Add Person</h3>
-    <div class="field">
-      <label>Name</label>
-      <input type="text" id="userNameInput" placeholder="e.g. Amma">
-    </div>
-    <div class="field">
-      <label>4-digit PIN</label>
-      <input type="text" id="userPinInput" placeholder="e.g. 2468" maxlength="4" inputmode="numeric">
-    </div>
-    <div class="field">
-      <label>Role</label>
-      <select id="userRoleInput">
-        <option value="member">Member (play, favorite, playlists)</option>
-        <option value="admin">Admin (also upload, rename, delete)</option>
-      </select>
-    </div>
-    <button class="btn primary" id="saveUserBtn">Save</button>
-    <button class="btn danger" id="deleteUserBtn" style="margin-top:10px; display:none;">Remove this person</button>
+    <p style="color:var(--grey); font-size:13px; margin-top:14px; line-height:1.5;">
+      People sign up in the app themselves. New ones wait here until you approve them.
+    </p>
   </div>
 </div>
 
@@ -568,7 +561,9 @@ input{font-family:inherit;}
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+         onAuthStateChanged, signOut, sendPasswordResetEmail }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDufR0ExIBjNBmT578D-MIreUD5_1lRESI",
@@ -689,21 +684,27 @@ function watchPlayStart(item){
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushErrorLogQueue(); });
 
 
-// Sign in anonymously so Firebase rules can require auth != null instead
-// of being wide open to anyone who has the database URL.
-try {
-  await signInAnonymously(auth);
-} catch (e) {
-  console.error("Melody: anonymous sign-in failed", e);
-}
-
 const WORKER_URL = "https://melody-r2-worker.srezycard.workers.dev";
-const AUTH_SECRET = "melody-secret-2026";
-const DEFAULT_PIN = "1973";
-async function sha256Hex(str){
-  const enc = new TextEncoder().encode(str);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+// The worker used to trust one fixed string that was sitting right here in a
+// public repository. It now wants a real Firebase ID token, so every call
+// carries the signed-in person's own token. Tokens last an hour; on a 401 we
+// force a fresh one once and retry, which covers a token that expired while
+// the app sat open.
+async function bearerToken(force){
+  const u = auth.currentUser;
+  if(!u) throw new Error('not signed in');
+  return await u.getIdToken(!!force);
+}
+async function authedFetch(url, opts){
+  opts = opts || {};
+  const attempt = async (force)=>{
+    const headers = new Headers(opts.headers || {});
+    headers.set('Authorization', 'Bearer ' + await bearerToken(force));
+    return fetch(url, Object.assign({}, opts, { headers }));
+  };
+  const resp = await attempt(false);
+  return resp.status === 401 ? attempt(true) : resp;
 }
 const OFFLINE_CACHE = 'melody-offline-media';
 
@@ -830,98 +831,148 @@ onValue(ref(db, 'offlineIntent'), snap => { offlineIntent = snap.val() || {}; ma
 window.addEventListener('online', maybeAutoRestoreOffline);
 
 // ---------------- LOGIN ----------------
-let pinBuffer = "";
-const pinDotsEl = document.getElementById('pinDots');
-function renderPinDots(){
-  const dots = pinDotsEl.querySelectorAll('.pin-dot');
-  dots.forEach((d,i)=>{ d.className = 'pin-dot' + (i < pinBuffer.length ? ' filled' : ''); });
+let signupMode = false;
+
+function loginMsg(text, good){
+  const el = document.getElementById('loginMsg');
+  if(!el) return;
+  el.textContent = text || '';
+  el.style.color = good ? 'var(--yellow)' : 'var(--danger)';
 }
-function shakeDots(){
-  const dots = pinDotsEl.querySelectorAll('.pin-dot');
-  dots.forEach(d=>d.classList.add('err'));
-  setTimeout(()=>{
-    dots.forEach(d=>d.classList.remove('err','filled'));
-    pinBuffer = "";
-  }, 350);
+
+function setSignupMode(on){
+  signupMode = on;
+  document.getElementById('signupName').style.display = on ? 'block' : 'none';
+  document.getElementById('loginPassword').setAttribute('autocomplete', on ? 'new-password' : 'current-password');
+  document.getElementById('loginBtn').textContent = on ? 'Create account' : 'Sign in';
+  document.getElementById('toggleSignupBtn').textContent = on ? 'Already signed up? Sign in' : 'New here? Create an account';
+  document.getElementById('loginTagline').textContent = on ? 'Create your account' : 'Sign in to listen';
+  document.getElementById('forgotBtn').style.display = on ? 'none' : 'block';
+  loginMsg('');
 }
-function handleKeypadTap(e){
-  const btn = e.target.closest('.key');
-  if(!btn) return;
-  if(btn.id === 'delKey'){ pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
-  const k = btn.dataset.k;
-  if(k === undefined) return;
-  if(pinBuffer.length >= 4) return;
-  pinBuffer += k;
-  renderPinDots();
-  if(pinBuffer.length === 4){
-    setTimeout(async ()=>{
-      const enteredHash = await sha256Hex(pinBuffer);
-      const match = Object.entries(usersData).find(([id,u]) => (u.pinHash && u.pinHash === enteredHash) || (u.pin && u.pin === pinBuffer));
-      if(match){
-        currentUser = { id: match[0], name: match[1].name, role: match[1].role };
-        sessionStorage.setItem('melody_user', JSON.stringify(currentUser));
-        pinBuffer = "";
-        renderPinDots();
-        showApp();
-      } else if(Object.keys(usersData).length === 0 && pinBuffer === DEFAULT_PIN){
-        // Firebase user list hasn't loaded yet — fall back to default admin PIN
-        currentUser = { id: null, name: 'Admin', role: 'admin' };
-        sessionStorage.setItem('melody_user', JSON.stringify(currentUser));
-        pinBuffer = "";
-        renderPinDots();
-        showApp();
-      } else {
-        shakeDots();
-      }
-    }, 120);
+
+// Firebase error codes are not for reading. Turn them into something calm.
+function friendlyAuthMessage(code){
+  switch(code){
+    case 'auth/invalid-email':          return 'That email does not look right.';
+    case 'auth/missing-password':       return 'Type your password.';
+    case 'auth/weak-password':          return 'Password needs at least 6 characters.';
+    case 'auth/email-already-in-use':   return 'That email already has an account. Sign in instead.';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':         return 'Email or password is wrong.';
+    case 'auth/too-many-requests':      return 'Too many tries. Wait a minute and try again.';
+    case 'auth/network-request-failed': return 'No connection. Check the network and try again.';
+    case 'auth/operation-not-allowed':  return 'Email sign-in is not switched on for this app yet.';
+    default:                            return 'Could not sign in. Try again in a moment.';
   }
 }
-let keypadLastTouchTs = 0;
-function handleKeypadTouchEnd(e){
-  e.preventDefault(); // stop the slow trailing synthetic 'click' from firing (and don't zoom/select)
-  keypadLastTouchTs = Date.now();
-  handleKeypadTap(e);
+
+// The first person to sign up becomes the admin. The database rules decide
+// this, not the app: we ask for admin, and if the rules say no because members
+// already exist, we settle for a pending member.
+async function claimMembership(user, name){
+  const base = {
+    name: name || (user.email || '').split('@')[0],
+    email: user.email,
+    created: Date.now()
+  };
+  try{
+    await set(ref(db, 'members/' + user.uid),
+      Object.assign({}, base, { role: 'admin', status: 'approved' }));
+  }catch(e){
+    console.log('Melody: not the first member, joining as pending');
+    await set(ref(db, 'members/' + user.uid),
+      Object.assign({}, base, { role: 'member', status: 'pending' }));
+  }
 }
-document.getElementById('keypad').addEventListener('touchend', handleKeypadTouchEnd, {passive:false});
-document.getElementById('keypad').addEventListener('click', (e)=>{
-  // Skip if a touchend just handled this same tap (prevents double-entry on touch devices);
-  // this only matters for devices where the synthetic click still slips through.
-  if(Date.now() - keypadLastTouchTs < 500) return;
-  handleKeypadTap(e);
+
+let loginBusy = false;
+async function doLogin(){
+  if(loginBusy) return;
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const name     = document.getElementById('signupName').value.trim();
+
+  if(!email){    loginMsg('Type your email.'); return; }
+  if(!password){ loginMsg('Type your password.'); return; }
+  if(signupMode && !name){ loginMsg('Type your name.'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  const label = btn.textContent;
+  loginBusy = true;
+  btn.disabled = true;
+  btn.textContent = 'One moment…';
+  loginMsg('');
+  try{
+    if(signupMode){
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await claimMembership(cred.user, name);
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+    document.getElementById('loginPassword').value = '';
+  }catch(e){
+    console.error('Melody: sign-in failed', e);
+    loginMsg(friendlyAuthMessage(e && e.code));
+  }finally{
+    loginBusy = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('toggleSignupBtn').addEventListener('click', ()=> setSignupMode(!signupMode));
+['loginEmail','loginPassword','signupName'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') doLogin(); });
 });
-function digitFromKeyEvent(e){
-  if(e.code && /^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
-  if(e.code && /^Numpad[0-9]$/.test(e.code)) return e.code.slice(6);
-  if(e.key >= '0' && e.key <= '9') return e.key;
-  return null;
-}
-document.addEventListener('keydown', (e)=>{
-  const loginScreen = document.getElementById('loginScreen');
-  if(!loginScreen || !loginScreen.classList.contains('active')) return;
-  const d = digitFromKeyEvent(e);
-  if(d !== null){
-    const btn = document.querySelector(`#keypad .key[data-k="${d}"]`);
-    if(btn) btn.click();
-  } else if(e.key === 'Backspace' || e.code === 'Backspace'){
-    document.getElementById('delKey')?.click();
+document.getElementById('pendingSignOutBtn').addEventListener('click', ()=> signOut(auth));
+document.getElementById('forgotBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('loginEmail').value.trim();
+  if(!email){ loginMsg('Type your email first, then tap this.'); return; }
+  try{
+    await sendPasswordResetEmail(auth, email);
+    loginMsg('Reset link sent. Check that inbox.', true);
+  }catch(e){
+    console.error('Melody: reset failed', e);
+    loginMsg(friendlyAuthMessage(e && e.code));
   }
 });
 
+function showLogin(){
+  appStarted = false;
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').classList.add('active');
+  document.getElementById('loginForm').style.display = 'flex';
+  document.getElementById('pendingBox').style.display = 'none';
+}
+function showPending(){
+  appStarted = false;
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').classList.add('active');
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('pendingBox').style.display = 'flex';
+}
+
+let appStarted = false;
 function showApp(){
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appScreen').classList.add('active');
-  sessionStorage.setItem('melody_unlocked','1');
+  applyRoleUI();
+  // The member record is watched live, so this can fire again mid-session
+  // when a role changes. Only the role UI should redo itself; restarting the
+  // cache scan and the resume prompt would interrupt whatever is playing.
+  if(appStarted) return;
+  appStarted = true;
   refreshStorageUsage();
   refreshOfflineCache();
-  applyRoleUI();
   checkResumeState();
 }
-document.getElementById('lockBtn').addEventListener('click', ()=>{
-  sessionStorage.removeItem('melody_unlocked');
-  sessionStorage.removeItem('melody_user');
+document.getElementById('lockBtn').addEventListener('click', async ()=>{
   currentUser = null;
-  document.getElementById('appScreen').classList.remove('active');
-  document.getElementById('loginScreen').classList.add('active');
+  try{ await signOut(auth); }catch(e){ console.error('Melody: sign-out failed', e); }
+  showLogin();
 });
 
 function applyRoleUI(){
@@ -1022,14 +1073,30 @@ function showAutoCheckPopup(entries){
   });
 }
 
-if(sessionStorage.getItem('melody_unlocked') === '1'){
-  document.getElementById('loginScreen').classList.remove('active');
-  document.getElementById('appScreen').classList.add('active');
-  try{ currentUser = JSON.parse(sessionStorage.getItem('melody_user') || 'null'); }catch(e){ currentUser = null; }
-  refreshStorageUsage();
-  refreshOfflineCache();
-  applyRoleUI();
-}
+// Firebase keeps the session on the device, so this runs on every open and
+// nobody has to type anything again. Watching our own member record means an
+// approval takes effect the moment it happens, with no reload.
+let membershipUnsub = null;
+onAuthStateChanged(auth, (user)=>{
+  if(membershipUnsub){ membershipUnsub(); membershipUnsub = null; }
+  if(!user){ currentUser = null; showLogin(); return; }
+
+  membershipUnsub = onValue(ref(db, 'members/' + user.uid), (snap)=>{
+    const m = snap.val();
+    if(m && m.status === 'approved'){
+      currentUser = { id: user.uid, name: m.name, role: m.role, email: m.email };
+      showApp();
+      if(m.role === 'admin') watchMembers();
+    } else {
+      currentUser = null;
+      showPending();
+    }
+  }, (err)=>{
+    console.error('Melody: could not read membership', err);
+    currentUser = null;
+    showPending();
+  });
+});
 
 const FREE_TIER_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 function formatBytes(bytes){
@@ -1041,7 +1108,7 @@ async function refreshStorageUsage(){
   const fill = document.getElementById('storageFill');
   const label = document.getElementById('storageLabel');
   try{
-    const resp = await fetch(WORKER_URL + '/list', { cache: 'no-store' });
+    const resp = await authedFetch(WORKER_URL + '/list', { cache: 'no-store' });
     const files = await resp.json();
     const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
     const pct = Math.min(100, (totalBytes / FREE_TIER_BYTES) * 100);
@@ -1088,29 +1155,23 @@ async function autoCleanupPlaylists(){
 }
 onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
 onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
-onValue(ref(db, 'users'), snap => { usersData = snap.val() || {}; renderUserList(); migrateLegacyPins(); });
+// Only an admin may read the whole member list, so this is subscribed once,
+// after we know the role. The old 'users' node held PINs in plain text; it is
+// cleared out here so it stops sitting in the database and in every backup.
+let membersWatched = false;
+function watchMembers(){
+  if(membersWatched) return;
+  membersWatched = true;
+  onValue(ref(db, 'members'), (snap)=>{
+    usersData = snap.val() || {};
+    renderUserList();
+  }, (err)=> console.error('Melody: member list read failed', err));
 
-async function migrateLegacyPins(){
-  const updates = {};
-  for(const [id,u] of Object.entries(usersData)){
-    if(u.pin && !u.pinHash){
-      const hash = await sha256Hex(u.pin);
-      updates['users/'+id+'/pinHash'] = hash;
-      updates['users/'+id+'/pin'] = null;
-    }
-  }
-  if(Object.keys(updates).length){
-    try{ await update(ref(db), updates); }catch(e){ console.error('PIN migration failed', e); }
-  }
+  get(ref(db, 'users'))
+    .then(snap => snap.exists() ? remove(ref(db, 'users')) : null)
+    .then(done => { if(done !== null) console.log('Melody: removed the old PIN list'); })
+    .catch(e => console.log('Melody: old PIN list not removed', e && e.code));
 }
-
-(async function seedAdminIfNeeded(){
-  const snap = await get(ref(db, 'users'));
-  if(!snap.exists()){
-    const hash = await sha256Hex(DEFAULT_PIN);
-    await push(ref(db, 'users'), { name: 'Admin', pinHash: hash, role: 'admin' });
-  }
-})();
 
 // ---------------- TABS / NAV ----------------
 function setTab(tab){
@@ -1329,7 +1390,7 @@ async function findAndCleanDuplicates(){
   if(!confirm(`${dupes.length} duplicate item(s) found (keeping earliest copy of each):\n${names}${more}\n\nDelete the extra copies?`)) return;
   let done = 0;
   for(const item of dupes){
-    try{ await fetch(buildFileUrl(item.key), { method:'DELETE', headers:{'Authorization':'Bearer '+AUTH_SECRET} }); }catch(e){}
+    try{ await authedFetch(buildFileUrl(item.key), { method:'DELETE' }); }catch(e){}
     const node = item.type === 'video' ? 'videos' : 'songs';
     await remove(ref(db, node + '/' + item.id));
     await remove(ref(db, 'favorites/' + keyFor(item)));
@@ -1352,7 +1413,7 @@ document.getElementById('bulkDeleteBtn').addEventListener('click', async ()=>{
     const item = all.find(i => i.type===type && i.id===id);
     if(!item) continue;
     try{
-      await fetch(buildFileUrl(item.key), { method:'DELETE', headers:{'Authorization':'Bearer '+AUTH_SECRET} });
+      await authedFetch(buildFileUrl(item.key), { method:'DELETE' });
     }catch(e){}
     const node = item.type === 'video' ? 'videos' : 'songs';
     await remove(ref(db, node + '/' + item.id));
@@ -1590,79 +1651,96 @@ document.getElementById('clearFiltersBtn').addEventListener('click', ()=>{
 });
 document.getElementById('applyFiltersBtn').addEventListener('click', ()=> closeSheets());
 
-// ---------------- MANAGE USERS ----------------
+// ---------------- PEOPLE ----------------
 function renderUserList(){
   const wrap = document.getElementById('userListWrap');
   if(!wrap) return;
   wrap.innerHTML = '';
-  Object.entries(usersData).forEach(([id, u])=>{
-    const row = document.createElement('div');
-    row.className = 'sheet-row';
-    row.innerHTML = `<span class="sr-icon">${u.role==='admin' ? '👑' : '🙂'}</span>
-      <span style="flex:1;">${escapeHtml(u.name)} <span style="color:var(--grey); font-size:12px;">(${u.role})</span></span>`;
-    row.addEventListener('click', ()=> openUserForm(id, u));
-    wrap.appendChild(row);
-  });
-  if(Object.keys(usersData).length === 0){
-    wrap.innerHTML = '<p style="color:var(--grey); font-size:13px;">No users yet.</p>';
-  }
-}
-document.getElementById('manageUsersBtn').addEventListener('click', ()=>{
-  if(!isAdminUser()){ toast('Only Admin can manage users'); return; }
-  renderUserList();
-  openSheet('manageUsersOverlay');
-});
 
-let editingUserId = null;
-function openUserForm(id, u){
-  editingUserId = id || null;
-  document.getElementById('userFormTitle').textContent = id ? 'Edit Person' : 'Add Person';
-  document.getElementById('userNameInput').value = u ? u.name : '';
-  document.getElementById('userPinInput').value = '';
-  document.getElementById('userPinInput').placeholder = id ? 'Leave blank to keep current PIN' : '4-digit PIN';
-  document.getElementById('userRoleInput').value = u ? u.role : 'member';
-  document.getElementById('deleteUserBtn').style.display = id ? 'block' : 'none';
-  closeSheets();
-  openSheet('addUserOverlay');
-}
-document.getElementById('addUserBtn').addEventListener('click', ()=> openUserForm(null, null));
-document.getElementById('saveUserBtn').addEventListener('click', async ()=>{
-  const name = document.getElementById('userNameInput').value.trim();
-  const pin = document.getElementById('userPinInput').value.trim();
-  const role = document.getElementById('userRoleInput').value;
-  if(!name){ toast('Enter a name'); return; }
-
-  let pinHash = null;
-  if(pin){
-    if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits'); return; }
-    pinHash = await sha256Hex(pin);
-    const dupe = Object.entries(usersData).find(([id,u]) => u.pinHash === pinHash && id !== editingUserId);
-    if(dupe){ toast('That PIN is already used by ' + dupe[1].name); return; }
-  } else if(!editingUserId){
-    toast('Enter a 4-digit PIN'); return;
-  }
-
-  if(editingUserId){
-    const payload = { name, role };
-    if(pinHash) payload.pinHash = pinHash;
-    await update(ref(db, 'users/' + editingUserId), payload);
-  } else {
-    await push(ref(db, 'users'), { name, pinHash, role });
-  }
-  closeSheets();
-  toast('Saved');
-});
-document.getElementById('deleteUserBtn').addEventListener('click', async ()=>{
-  if(!editingUserId) return;
-  const admins = Object.values(usersData).filter(u => u.role === 'admin');
-  if(usersData[editingUserId] && usersData[editingUserId].role === 'admin' && admins.length <= 1){
-    toast("Can't remove the last Admin");
+  const entries = Object.entries(usersData);
+  if(entries.length === 0){
+    wrap.innerHTML = '<p style="color:var(--grey); font-size:13px;">Nobody has signed up yet.</p>';
     return;
   }
-  if(!confirm('Remove this person?')) return;
-  await remove(ref(db, 'users/' + editingUserId));
-  closeSheets();
-  toast('Removed');
+
+  // People still waiting go on top, because they are the ones needing an answer.
+  entries.sort((a,b)=>{
+    const wa = a[1].status === 'pending' ? 0 : 1;
+    const wb = b[1].status === 'pending' ? 0 : 1;
+    return wa !== wb ? wa - wb : (a[1].name || '').localeCompare(b[1].name || '');
+  });
+
+  entries.forEach(([uid, u])=>{
+    const row = document.createElement('div');
+    row.className = 'member-row';
+
+    const mark = u.status === 'pending' ? '⏳' : (u.role === 'admin' ? '👑' : '🙂');
+    const who  = document.createElement('span');
+    who.className = 'member-name';
+    who.innerHTML = `${mark} ${escapeHtml(u.name || 'Someone')}` +
+      `<span class="member-sub">${escapeHtml(u.email || '')}</span>`;
+    row.appendChild(who);
+
+    const add = (label, cls, fn)=>{
+      const b = document.createElement('button');
+      b.className = 'pill' + (cls ? ' ' + cls : '');
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      row.appendChild(b);
+    };
+
+    if(u.status === 'pending'){
+      add('Approve', '', ()=> setMemberStatus(uid, u, 'approved'));
+      add('Remove', 'no', ()=> removeMember(uid, u));
+    } else if(uid !== (currentUser && currentUser.id) && u.role !== 'admin'){
+      add('Make admin', 'wait', ()=> setMemberRole(uid, u, 'admin'));
+      add('Remove', 'no', ()=> removeMember(uid, u));
+    } else if(uid !== (currentUser && currentUser.id)){
+      add('Remove', 'no', ()=> removeMember(uid, u));
+    }
+
+    wrap.appendChild(row);
+  });
+}
+
+async function setMemberStatus(uid, u, status){
+  try{
+    await update(ref(db, 'members/' + uid), { status });
+    toast(u.name + ' can come in now');
+  }catch(e){
+    console.error('Melody: approve failed', e);
+    toast('Could not save that. Try again.');
+  }
+}
+
+async function setMemberRole(uid, u, role){
+  try{
+    await update(ref(db, 'members/' + uid), { role });
+    toast(u.name + ' is an admin now');
+  }catch(e){
+    console.error('Melody: role change failed', e);
+    toast('Could not save that. Try again.');
+  }
+}
+
+async function removeMember(uid, u){
+  if(uid === (currentUser && currentUser.id)){ toast("You can't remove yourself"); return; }
+  const admins = Object.values(usersData).filter(m => m.role === 'admin' && m.status === 'approved');
+  if(u.role === 'admin' && admins.length <= 1){ toast("Can't remove the last admin"); return; }
+  if(!confirm('Remove ' + (u.name || 'this person') + '?')) return;
+  try{
+    await remove(ref(db, 'members/' + uid));
+    toast('Removed');
+  }catch(e){
+    console.error('Melody: remove failed', e);
+    toast('Could not remove them. Try again.');
+  }
+}
+
+document.getElementById('manageUsersBtn').addEventListener('click', ()=>{
+  if(!isAdminUser()){ toast('Only an admin can manage people'); return; }
+  renderUserList();
+  openSheet('manageUsersOverlay');
 });
 
 document.getElementById('itemPlayRow').addEventListener('click', ()=>{ closeSheets(); if(sheetItem) playFromList(sheetItem); });
@@ -1764,9 +1842,7 @@ document.getElementById('itemDeleteRow').addEventListener('click', async ()=>{
   if(!sheetItem) return;
   if(!confirm('Delete "' + (sheetItem.title||sheetItem.key) + '"? This cannot be undone.')) return;
   try{
-    await fetch(buildFileUrl(sheetItem.key), {
-      method:'DELETE', headers:{'Authorization':'Bearer ' + AUTH_SECRET}
-    });
+    await authedFetch(buildFileUrl(sheetItem.key), { method:'DELETE' });
   }catch(e){}
   const node = sheetItem.type === 'video' ? 'videos' : 'songs';
   await remove(ref(db, node + '/' + sheetItem.id));
@@ -1992,11 +2068,14 @@ async function handleFiles(fileList, kind){
   refreshStorageUsage();
 }
 
-function uploadWithProgress(key, file, onProgress){
+async function uploadWithProgress(key, file, onProgress){
+  // XHR is used here rather than fetch because it is the only way to get a
+  // real upload progress bar, so the token has to be fetched up front.
+  const token = await bearerToken(false);
   return new Promise((resolve, reject)=>{
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', buildFileUrl(key));
-    xhr.setRequestHeader('Authorization', 'Bearer ' + AUTH_SECRET);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
     xhr.setRequestHeader('Content-Type', detectMimeType(file));
     xhr.upload.onprogress = (e)=>{
       if(e.lengthComputable) onProgress(Math.round((e.loaded/e.total)*100));
