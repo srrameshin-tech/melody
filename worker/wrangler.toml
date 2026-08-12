@@ -1,0 +1,10 @@
+name = "melody-r2-worker"
+main = "worker.js"
+compatibility_date = "2026-08-12"
+account_id = "00477bc3c0025945c4f11670e98f9ab2"
+
+workers_dev = true
+
+[[r2_buckets]]
+binding     = "MELODY_BUCKET"
+bucket_name = "melody-files"
