@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="app-build" content="20260812-1321">
+<meta name="app-build" content="20260813-0930">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -887,6 +887,7 @@ async function claimMembership(user, name){
   }
 }
 
+let pendingName = '';
 let loginBusy = false;
 async function doLogin(){
   if(loginBusy) return;
@@ -906,6 +907,7 @@ async function doLogin(){
   loginMsg('');
   try{
     if(signupMode){
+      pendingName = name;
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await claimMembership(cred.user, name);
     } else {
@@ -1077,12 +1079,25 @@ function showAutoCheckPopup(entries){
 // nobody has to type anything again. Watching our own member record means an
 // approval takes effect the moment it happens, with no reload.
 let membershipUnsub = null;
+let claiming = false;
 onAuthStateChanged(auth, (user)=>{
   if(membershipUnsub){ membershipUnsub(); membershipUnsub = null; }
   if(!user){ currentUser = null; showLogin(); return; }
 
-  membershipUnsub = onValue(ref(db, 'members/' + user.uid), (snap)=>{
+  membershipUnsub = onValue(ref(db, 'members/' + user.uid), async (snap)=>{
     const m = snap.val();
+
+    if(!m && !claiming){
+      claiming = true;
+      try{
+        await claimMembership(user, pendingName);
+      }catch(e){
+        console.error('Melody: could not create the member record', e);
+      }
+      claiming = false;
+      return;              // the listener fires again with the new record
+    }
+
     if(m && m.status === 'approved'){
       currentUser = { id: user.uid, name: m.name, role: m.role, email: m.email };
       showApp();
