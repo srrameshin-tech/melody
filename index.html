@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="app-build" content="20260813-0950">
+<meta name="app-build" content="20260813-1420">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -2083,7 +2083,11 @@ async function handleFiles(fileList, kind){
         uploaded: Date.now()
       });
     } catch(err){
-      statusEl.textContent = 'Failed: ' + err.message;
+      // The person uploading has no use for the raw reason. It goes to the
+      // console and the Auto Check log; they get a line they can act on.
+      console.error('Melody: upload failed', err);
+      try{ logAppError('upload', err && err.message, file && file.name); }catch(e){}
+      statusEl.textContent = 'Could not upload that file. Try again.';
       statusEl.style.color = '#FF5C5C';
     }
   }
@@ -2225,7 +2229,11 @@ async function drivePickerCallback(data){
         uploaded: Date.now()
       });
     } catch(err){
-      statusEl.textContent = 'Failed: ' + err.message;
+      // The person uploading has no use for the raw reason. It goes to the
+      // console and the Auto Check log; they get a line they can act on.
+      console.error('Melody: upload failed', err);
+      try{ logAppError('upload', err && err.message, file && file.name); }catch(e){}
+      statusEl.textContent = 'Could not upload that file. Try again.';
       statusEl.style.color = '#FF5C5C';
     }
   }
