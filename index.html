@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="app-build" content="20260813-0930">
+<meta name="app-build" content="20260813-0950">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -827,7 +827,9 @@ async function maybeAutoRestoreOffline(){
     refreshOfflineCache();
   }
 }
+function watchOfflineIntent(){
 onValue(ref(db, 'offlineIntent'), snap => { offlineIntent = snap.val() || {}; maybeAutoRestoreOffline(); });
+}
 window.addEventListener('online', maybeAutoRestoreOffline);
 
 // ---------------- LOGIN ----------------
@@ -967,6 +969,7 @@ function showApp(){
   // cache scan and the resume prompt would interrupt whatever is playing.
   if(appStarted) return;
   appStarted = true;
+  watchLibrary();
   refreshStorageUsage();
   refreshOfflineCache();
   checkResumeState();
@@ -1146,9 +1149,19 @@ function resyncQueueOrder(){
     if(newIdx >= 0) currentIndex = newIdx;
   }
 }
-onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); resyncQueueOrder(); });
-onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); });
-onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); });
+let libraryWatched = false;
+function watchLibrary(){
+  if(libraryWatched) return;
+  libraryWatched = true;
+  const oops = what => err => console.error('Melody: could not read ' + what, err);
+
+  onValue(ref(db, 'songs'), snap => { songs = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); resyncQueueOrder(); }, oops('songs'));
+  onValue(ref(db, 'videos'), snap => { videos = snap.val() || {}; renderContent(); autoCleanupPlaylists(); refreshOfflineCache(); checkResumeState(); }, oops('videos'));
+  onValue(ref(db, 'playlists'), snap => { playlists = snap.val() || {}; renderContent(); autoCleanupPlaylists(); }, oops('playlists'));
+  onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); }, oops('favorites'));
+  onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); }, oops('recent'));
+  watchOfflineIntent();
+}
 
 // Self-healing: remove playlist item entries that point to songs/videos
 // which no longer exist (leftover from before delete used to clean these up).
@@ -1168,8 +1181,7 @@ async function autoCleanupPlaylists(){
     await update(ref(db), updates);
   }
 }
-onValue(ref(db, 'favorites'), snap => { favorites = snap.val() || {}; renderContent(); });
-onValue(ref(db, 'recent'), snap => { recentPlays = snap.val() || {}; renderContent(); });
+
 // Only an admin may read the whole member list, so this is subscribed once,
 // after we know the role. The old 'users' node held PINs in plain text; it is
 // cleared out here so it stops sitting in the database and in every backup.
